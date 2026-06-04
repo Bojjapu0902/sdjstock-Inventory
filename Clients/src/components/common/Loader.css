@@ -1,0 +1,184 @@
+/* Loader.css */
+
+.loader-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: linear-gradient(135deg, #1E1B4B 0%, #312E81 45%, #1E1B4B 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.5s ease;
+}
+
+.loader-orbs-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.loader-orb {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, #818CF8, transparent);
+}
+
+.loader-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  background-image:
+    linear-gradient(rgba(255,255,255,1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+.loader-center {
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.loader-logo-wrap {
+  margin-bottom: 28px;
+  display: flex;
+  justify-content: center;
+}
+
+.loader-logo-ring-wrap {
+  position: relative;
+  width: 88px;
+  height: 88px;
+}
+
+.loader-svg-spin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: spin 2s linear infinite;
+}
+
+.loader-svg-spin-reverse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: spin-reverse 3s linear infinite;
+}
+
+.loader-icon-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loader-icon-box {
+  width: 94px;
+  height: 94px;
+  border-radius: 100%;
+  overflow: hidden;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  box-shadow: 0 8px 32px rgba(79,70,229,0.5);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.loader-brand-name {
+  font-size: 30px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+  font-family: 'Inter', sans-serif;
+  animation: fade-up 0.6s ease both;
+}
+.loader-icon-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 100%;
+
+}
+
+.loader-brand-name span {
+  color: #818CF8;
+}
+
+.loader-brand-sub {
+  font-size: 13px;
+  color: rgba(199,210,254,0.7);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 44px;
+  animation: fade-up 0.6s 0.1s ease both;
+}
+
+.loader-progress-wrap {
+  width: 280px;
+  margin: 0 auto 14px;
+}
+
+.loader-progress-track {
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.loader-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #818CF8, #4F46E5);
+  border-radius: 10px;
+  transition: width 0.08s linear;
+  box-shadow: 0 0 12px rgba(129,140,248,0.6);
+}
+
+.loader-status-msg {
+  font-size: 12.5px;
+  color: rgba(199,210,254,0.6);
+  letter-spacing: 0.3px;
+  height: 20px;
+  transition: opacity 0.3s ease;
+}
+
+.loader-percent {
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(199,210,254,0.35);
+  font-family: monospace;
+}
+
+.loader-footer {
+  position: absolute;
+  bottom: 28px;
+  font-size: 11.5px;
+  color: rgba(199,210,254,0.3);
+  letter-spacing: 0.5px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes spin-reverse {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 8px 32px rgba(79,70,229,0.5); transform: scale(1); }
+  50%       { box-shadow: 0 8px 48px rgba(129,140,248,0.75); transform: scale(1.04); }
+}
+@keyframes float-orb {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(12px, 18px) scale(1.06); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

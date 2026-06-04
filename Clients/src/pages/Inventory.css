@@ -1,0 +1,80 @@
+/* Inventory.css */
+
+.inventory-tabs-wrap {
+  display: flex;
+  gap: 2px;
+  border-bottom: 2px solid var(--border-color);
+  margin-bottom: 20px;
+  background: var(--bg-card);
+  padding: 0 4px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-card);
+}
+
+.inventory-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.inventory-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.inventory-item-name {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.inventory-item-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.inventory-item-card {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: var(--transition);
+  cursor: pointer;
+}
+
+.inventory-item-card:hover {
+  border-color: var(--primary-light);
+  background: var(--primary-pale);
+}
+
+.inventory-item-card-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--primary-pale);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.inventory-days-badge {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.inventory-chart-tooltip {
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  font-size: 12px;
+}
