@@ -1,10 +1,11 @@
 ﻿import './Suppliers.css';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MdAdd, MdEdit, MdDelete, MdVisibility, MdStar, MdRefresh, MdFileDownload } from 'react-icons/md';
 import DataTable from '../components/common/DataTable';
 import StatusBadge from '../components/common/StatusBadge';
 import Modal from '../components/common/Modal';
-import { suppliers, getSupplierStatusType, formatCurrency } from '../data/mockData';
+import { getSupplierStatusType, formatCurrency } from '../data/mockData';
+import api from '../services/api';
 
 const INITIAL_FORM = {
   name: '', category: '', contact: '', email: '', phone: '',
@@ -29,7 +30,7 @@ const StarRating = ({ rating }) => (
 );
 
 const Suppliers = () => {
-  const [items, setItems]         = useState(suppliers);
+  const [items, setItems]         = useState([]);
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatus] = useState('All');
   const [showModal, setShowModal] = useState(false);
@@ -37,6 +38,10 @@ const Suppliers = () => {
   const [form, setForm]           = useState(INITIAL_FORM);
   const [viewItem, setViewItem]   = useState(null);
   const [deleteId, setDeleteId]   = useState(null);
+
+  useEffect(() => {
+    api.get('/suppliers').then(setItems).catch(console.error);
+  }, []);
 
   const filtered = useMemo(() => items.filter((s) => {
     const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -55,18 +60,25 @@ const Suppliers = () => {
   const openEdit  = (s)  => { setEditItem(s); setForm({ ...s }); setShowModal(true); };
   const closeModal = () => { setShowModal(false); setEditItem(null); };
 
-  const handleSave = () => {
-    if (editItem) {
-      setItems((prev) => prev.map((s) => s.id === editItem.id ? { ...s, ...form } : s));
-    } else {
-      const newId = `SUP-${String(items.length + 1).padStart(3, '0')}`;
-      setItems((prev) => [...prev, { id: newId, ...form }]);
-    }
-    closeModal();
+  const handleSave = async () => {
+    try {
+      if (editItem) {
+        const updated = await api.put(`/suppliers/${editItem.id}`, form);
+        setItems((prev) => prev.map((s) => s.id === editItem.id ? updated : s));
+      } else {
+        const newId = `SUP-${String(Date.now()).slice(-6)}`;
+        const created = await api.post('/suppliers', { id: newId, ...form });
+        setItems((prev) => [...prev, created]);
+      }
+      closeModal();
+    } catch (err) { console.error(err); }
   };
 
-  const handleDelete = (id) => {
-    setItems((prev) => prev.filter((s) => s.id !== id));
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/suppliers/${id}`);
+      setItems((prev) => prev.filter((s) => s.id !== id));
+    } catch (err) { console.error(err); }
     setDeleteId(null);
   };
 

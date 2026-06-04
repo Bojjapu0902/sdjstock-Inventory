@@ -34,11 +34,9 @@ const Login = ({ onLogin }) => {
 
     setLoading(true);
 
-    // Simulate network delay
-    setTimeout(() => {
-      const user = authenticate(username.trim(), password);
+    authenticate(username.trim(), password).then((user) => {
       if (user) {
-        const sessionUser = { username: user.username, role: user.role, name: user.name, projectId: user.projectId || null, email: user.email || '', phone: user.phone || '', id: user.id };
+        const sessionUser = { username: user.username, role: user.role, name: user.name, projectId: user.projectId || null, email: user.email || '', phone: user.phone || '', id: user.id, token: user.token };
         setCurrentUser(sessionUser);
         setAuthUser(sessionUser);
         setTimeout(() => onLogin(sessionUser), 2200);
@@ -48,7 +46,11 @@ const Login = ({ onLogin }) => {
         setFieldErr({ username: true, password: true });
         triggerShake();
       }
-    }, 900);
+    }).catch(() => {
+      setLoading(false);
+      setError('Server error. Please try again.');
+      triggerShake();
+    });
   };
 
   const features = [

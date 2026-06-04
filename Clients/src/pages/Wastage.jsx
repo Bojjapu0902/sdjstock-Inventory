@@ -1,5 +1,5 @@
 ﻿import './Wastage.css';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MdAdd, MdDelete, MdFileDownload, MdRefresh, MdTrendingDown } from 'react-icons/md';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -9,9 +9,10 @@ import DataTable from '../components/common/DataTable';
 import StatusBadge from '../components/common/StatusBadge';
 import Modal from '../components/common/Modal';
 import {
-  wastageLog, wastageByReason, wastageByCategory,
+  wastageByReason, wastageByCategory,
   monthlyWastageCost, categories, formatCurrency, formatDate,
 } from '../data/mockData';
+import api from '../services/api';
 
 const REASON_OPTIONS = ['Expired', 'Spoilage', 'Over-preparation', 'Freezer burn', 'Contamination', 'Mold', 'Theft', 'Damaged', 'Other'];
 const REASON_COLORS  = ['#EF4444','#F59E0B','#3B82F6','#8B5CF6','#10B981','#EC4899','#06B6D4','#F97316','#94A3B8'];
@@ -23,13 +24,17 @@ const INITIAL_FORM = {
 };
 
 const Wastage = () => {
-  const [entries, setEntries]     = useState(wastageLog);
+  const [entries, setEntries]     = useState([]);
   const [search, setSearch]       = useState('');
   const [catFilter, setCatFilter] = useState('All');
   const [reasonFilter, setReason] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm]           = useState(INITIAL_FORM);
   const [deleteId, setDeleteId]   = useState(null);
+
+  useEffect(() => {
+    api.get('/wastage').then(setEntries).catch(console.error);
+  }, []);
 
   const filtered = useMemo(() => entries.filter((e) => {
     const matchSearch = !search || e.item.toLowerCase().includes(search.toLowerCase()) || e.loggedBy.toLowerCase().includes(search.toLowerCase());
@@ -51,14 +56,20 @@ const Wastage = () => {
   const openAdd  = () => { setForm(INITIAL_FORM); setShowModal(true); };
   const closeModal = () => setShowModal(false);
 
-  const handleSave = () => {
-    const newId = `WST-${String(entries.length + 1).padStart(3, '0')}`;
-    setEntries((prev) => [{ id: newId, ...form }, ...prev]);
-    closeModal();
+  const handleSave = async () => {
+    try {
+      const newId = `WST-${Date.now()}`;
+      const created = await api.post('/wastage', { id: newId, ...form });
+      setEntries((prev) => [created, ...prev]);
+      closeModal();
+    } catch (err) { console.error(err); }
   };
 
-  const handleDelete = (id) => {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/wastage/${id}`);
+      setEntries((prev) => prev.filter((e) => e.id !== id));
+    } catch (err) { console.error(err); }
     setDeleteId(null);
   };
 

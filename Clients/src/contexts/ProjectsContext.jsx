@@ -1,97 +1,128 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import {
   getProjects, addProject, updateProject, deleteProject,
-  getAllStockReceived, addStockReceived, updateStockReceived, deleteStockReceived, approveSubmission,
+  getAllStockReceived, addStockReceived, updateStockReceived,
+  deleteStockReceived, approveSubmission,
   getAllStockUsed, addStockUsed, deleteStockUsed,
   clearProjectStockReceived, clearProjectStockUsed,
 } from '../data/projectsDb';
 import {
-  getUsers, deleteProjectUser,
-  createUser, deleteUser,
+  getUsers, deleteProjectUser, createUser, deleteUser,
 } from '../data/loginDb';
 
 const ProjectsContext = createContext(null);
 
-/**
- * Single source of truth for all project data.
- * Backed by localStorage — every mutation persists immediately.
- * Both Projects.jsx and ProjectDetails.jsx consume this context
- * so they always see the same, up-to-date state.
- */
 export function ProjectsProvider({ children }) {
-  const [projects,      setProjects]      = useState(() => getProjects());
-  const [users,         setUsers]         = useState(() => getUsers());
-  const [stockReceived, setStockReceived] = useState(() => getAllStockReceived());
-  const [stockUsed,     setStockUsed]     = useState(() => getAllStockUsed());
+  const [projects,      setProjects]      = useState([]);
+  const [users,         setUsers]         = useState([]);
+  const [stockReceived, setStockReceived] = useState({});
+  const [stockUsed,     setStockUsed]     = useState({});
+  const [loading,       setLoading]       = useState(true);
+
+  // Load all data on mount
+  useEffect(() => {
+    Promise.all([
+      getProjects(),
+      getUsers(),
+      getAllStockReceived(),
+      getAllStockUsed(),
+    ]).then(([p, u, sr, su]) => {
+      setProjects(p);
+      setUsers(u);
+      setStockReceived(sr);
+      setStockUsed(su);
+    }).catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
   /* ── Projects CRUD ──────────────────────────────── */
 
-  const addProjectFn = useCallback((formData) => {
-    setProjects((prev) => addProject(prev, formData));
+  const addProjectFn = useCallback(async (formData) => {
+    const newProject = await addProject([], formData);
+    setProjects((prev) => [...prev, newProject]);
+    return newProject;
   }, []);
 
-  const updateProjectFn = useCallback((id, formData) => {
-    setProjects((prev) => updateProject(prev, id, formData));
+  const updateProjectFn = useCallback(async (id, formData) => {
+    const updated = await updateProject([], id, formData);
+    setProjects((prev) => prev.map((p) => p.id === id ? updated : p));
   }, []);
 
-  const deleteProjectFn = useCallback((id) => {
-    setProjects((prev)         => deleteProject(prev, id));
-    setUsers((prev)            => deleteProjectUser(prev, id));
-    setStockReceived((prev)    => clearProjectStockReceived(prev, id));
-    setStockUsed((prev)        => clearProjectStockUsed(prev, id));
+  const deleteProjectFn = useCallback(async (id) => {
+    await deleteProject([], id);
+    await deleteProjectUser([], id);
+    const [sr, su] = await Promise.all([
+      clearProjectStockReceived({}, id),
+      clearProjectStockUsed({}, id),
+    ]);
+    setProjects((prev)      => prev.filter((p) => p.id !== id));
+    setUsers((prev)         => prev.filter((u) => u.projectId !== id));
+    setStockReceived(sr);
+    setStockUsed(su);
   }, []);
 
   /* ── Stock Received ────────────────────────────── */
 
-  const addStockReceivedFn = useCallback((projectId, submission) => {
-    setStockReceived((prev) => addStockReceived(prev, projectId, submission));
+  const addStockReceivedFn = useCallback(async (projectId, submission) => {
+    const updated = await addStockReceived({}, projectId, submission);
+    setStockReceived(updated);
   }, []);
 
-  const updateStockReceivedFn = useCallback((projectId, submissionId, updated) => {
-    setStockReceived((prev) => updateStockReceived(prev, projectId, submissionId, updated));
+  const updateStockReceivedFn = useCallback(async (projectId, submissionId, updated) => {
+    const result = await updateStockReceived({}, projectId, submissionId, updated);
+    setStockReceived(result);
   }, []);
 
-  const deleteStockReceivedFn = useCallback((projectId, submissionId) => {
-    setStockReceived((prev) => deleteStockReceived(prev, projectId, submissionId));
+  const deleteStockReceivedFn = useCallback(async (projectId, submissionId) => {
+    const result = await deleteStockReceived({}, projectId, submissionId);
+    setStockReceived(result);
   }, []);
 
-  const approveSubmissionFn = useCallback((projectId, submissionId, approvalItems, approvedBy) => {
-    setStockReceived((prev) => approveSubmission(prev, projectId, submissionId, approvalItems, approvedBy));
+  const approveSubmissionFn = useCallback(async (projectId, submissionId, approvalItems, approvedBy) => {
+    const result = await approveSubmission({}, projectId, submissionId, approvalItems, approvedBy);
+    setStockReceived(result);
   }, []);
 
   /* ── Users (admin panel) ───────────────────────── */
 
-  /** Returns { error: string|null }. Updates users state on success. */
-  const createUserFn = useCallback((userData) => {
-    let result;
-    setUsers((prev) => {
-      result = createUser(prev, userData);
-      return result.updated;
-    });
-    return result?.error ?? null;
+  const createUserFn = useCallback(async (userData) => {
+    const { updated, error } = await createUser([], userData);
+    if (!error && updated) {
+      setUsers((prev) => [...prev, updated]);
+    }
+    return error;
   }, []);
 
-  const deleteUserFn = useCallback((userId) => {
-    setUsers((prev) => deleteUser(prev, userId));
+  const deleteUserFn = useCallback(async (userId) => {
+    await deleteUser([], userId);
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
   }, []);
 
   /* ── Stock Used ────────────────────────────────── */
 
-  const addStockUsedFn = useCallback((projectId, formData) => {
-    setStockUsed((prev) => addStockUsed(prev, projectId, formData));
+  const addStockUsedFn = useCallback(async (projectId, formData) => {
+    const result = await addStockUsed({}, projectId, formData);
+    setStockUsed(result);
   }, []);
 
-  const deleteStockUsedFn = useCallback((projectId, recordId) => {
-    setStockUsed((prev) => deleteStockUsed(prev, projectId, recordId));
+  const deleteStockUsedFn = useCallback(async (projectId, recordId) => {
+    const result = await deleteStockUsed({}, projectId, recordId);
+    setStockUsed(result);
   }, []);
 
-  /* ─────────────────────────────────────────────── */
+  /* ── Expose users refresh ─────────────────────── */
+
+  const refreshUsers = useCallback(async () => {
+    const u = await getUsers();
+    setUsers(u);
+  }, []);
 
   const value = {
     projects,
     users,
     stockReceived,
     stockUsed,
+    loading,
     addProject:          addProjectFn,
     updateProject:       updateProjectFn,
     deleteProject:       deleteProjectFn,
@@ -101,6 +132,9 @@ export function ProjectsProvider({ children }) {
     approveSubmission:   approveSubmissionFn,
     addStockUsed:        addStockUsedFn,
     deleteStockUsed:     deleteStockUsedFn,
+    createUser:          createUserFn,
+    deleteUser:          deleteUserFn,
+    refreshUsers,
   };
 
   return (

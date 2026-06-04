@@ -3,10 +3,6 @@ import { setCurrentUser, clearCurrentUser, getCurrentUser } from '../data/loginD
 
 const AuthContext = createContext(null);
 
-/**
- * Wraps the whole app. Provides user identity and auth actions to any
- * descendant via useAuth() — no prop drilling needed.
- */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getCurrentUser());
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './Users.css';
 import {
   MdAdd, MdEdit, MdDelete, MdPerson, MdAdminPanelSettings,
@@ -7,9 +7,7 @@ import {
 import DataTable from '../components/common/DataTable';
 import Modal     from '../components/common/Modal';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  getUsers, createUser, deleteUser, saveUsers,
-} from '../data/loginDb';
+import api from '../services/api';
 
 /* ── helpers ─────────────────────────────────────────── */
 const ROLES = ['Admin', 'User'];
@@ -54,7 +52,7 @@ const Avatar = ({ name, role, size = 36 }) => {
 const Users = () => {
   const { user: currentUser } = useAuth();
 
-  const [users, setUsers]       = useState(() => getUsers());
+  const [users, setUsers]       = useState([]);
   const [search, setSearch]     = useState('');
   const [roleFilter, setRole]   = useState('All');
   const [showModal, setShowModal] = useState(false);
@@ -64,6 +62,10 @@ const Users = () => {
   const [deleteId, setDeleteId] = useState(null);
   const [showPass, setShowPass] = useState(false);
   const [viewItem, setViewItem] = useState(null);
+
+  useEffect(() => {
+    api.get('/users').then(setUsers).catch(console.error);
+  }, []);
 
   /* ── counts ────────────────────────────────────────── */
   const adminCount   = users.filter((u) => u.role === 'Admin').length;
@@ -94,41 +96,36 @@ const Users = () => {
   const handleField = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   /* ── save ──────────────────────────────────────────── */
-  const handleSave = () => {
-    if (editItem) {
-      if (!form.username.trim()) { setFormError('Username is required.'); return; }
-      if (!form.password.trim()) { setFormError('Password is required.'); return; }
-      const dup = users.find(
-        (u) => u.username.toLowerCase() === form.username.trim().toLowerCase() && u.id !== editItem.id
-      );
-      if (dup) { setFormError(`Username "${form.username.trim()}" is already taken.`); return; }
-
-      const updated = users.map((u) =>
-        u.id === editItem.id
-          ? { ...u,
-              name:      form.name.trim() || form.username.trim().toLowerCase(),
-              username:  form.username.trim().toLowerCase(),
-              password:  form.password.trim(),
-              role:      form.role,
-              email:     form.email.trim(),
-              phone:     form.phone.trim(),
-              projectId: form.role === 'Admin' ? null : (form.projectId.trim() || u.projectId || null),
-            }
-          : u
-      );
-      saveUsers(updated);
-      setUsers(updated);
-    } else {
-      const { updated, error } = createUser(users, form);
-      if (error) { setFormError(error); return; }
-      setUsers(updated);
-    }
-    closeModal();
+  const handleSave = async () => {
+    try {
+      if (editItem) {
+        if (!form.username.trim()) { setFormError('Username is required.'); return; }
+        const payload = {
+          name:      form.name.trim() || form.username.trim().toLowerCase(),
+          username:  form.username.trim().toLowerCase(),
+          role:      form.role,
+          email:     form.email.trim(),
+          phone:     form.phone.trim(),
+          projectId: form.role === 'Admin' ? null : (form.projectId.trim() || editItem.projectId || null),
+        };
+        if (form.password.trim()) payload.password = form.password.trim();
+        const updated = await api.put(`/users/${editItem.id}`, payload);
+        setUsers((prev) => prev.map((u) => u.id === editItem.id ? updated : u));
+      } else {
+        if (!form.username.trim() || !form.password.trim()) { setFormError('Username and password are required.'); return; }
+        const created = await api.post('/users', form);
+        setUsers((prev) => [...prev, created]);
+      }
+      closeModal();
+    } catch (err) { setFormError(err.message || 'Save failed'); }
   };
 
   /* ── delete ────────────────────────────────────────── */
-  const handleDelete = () => {
-    setUsers(deleteUser(users, deleteId));
+  const handleDelete = async () => {
+    try {
+      await api.delete(`/users/${deleteId}`);
+      setUsers((prev) => prev.filter((u) => u.id !== deleteId));
+    } catch (err) { console.error(err); }
     setDeleteId(null);
   };
 

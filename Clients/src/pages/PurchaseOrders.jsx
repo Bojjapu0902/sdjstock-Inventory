@@ -1,5 +1,5 @@
 ﻿import './PurchaseOrders.css';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MdAdd, MdFileDownload, MdEdit, MdDelete, MdVisibility, MdRefresh } from 'react-icons/md';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -7,7 +7,8 @@ import {
 import DataTable from '../components/common/DataTable';
 import StatusBadge from '../components/common/StatusBadge';
 import Modal from '../components/common/Modal';
-import { purchaseOrders, poStatusSummary, suppliers, getPOStatusType, formatCurrency, formatDate } from '../data/mockData';
+import { poStatusSummary, getPOStatusType, formatCurrency, formatDate } from '../data/mockData';
+import api from '../services/api';
 
 const INITIAL_PO = {
   supplier: 'AgroSource Ltd',
@@ -21,13 +22,19 @@ const INITIAL_PO = {
 };
 
 const PurchaseOrders = () => {
-  const [orders, setOrders]       = useState(purchaseOrders);
+  const [orders, setOrders]       = useState([]);
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatus] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [editPO, setEditPO]       = useState(null);
   const [form, setForm]           = useState(INITIAL_PO);
   const [viewPO, setViewPO]       = useState(null);
+  const [supplierList, setSupplierList] = useState([]);
+
+  useEffect(() => {
+    api.get('/purchase-orders').then(setOrders).catch(console.error);
+    api.get('/suppliers').then(setSupplierList).catch(console.error);
+  }, []);
 
   const filtered = useMemo(() => orders.filter((o) => {
     const matchSearch = !search || o.id.toLowerCase().includes(search.toLowerCase()) || o.supplier.toLowerCase().includes(search.toLowerCase());
@@ -44,14 +51,25 @@ const PurchaseOrders = () => {
   const openEdit = (po) => { setEditPO(po); setForm({ ...po }); setShowModal(true); };
   const closeModal = () => { setShowModal(false); setEditPO(null); };
 
-  const handleSave = () => {
-    if (editPO) {
-      setOrders((prev) => prev.map((o) => o.id === editPO.id ? { ...o, ...form } : o));
-    } else {
-      const newId = `PO-2024-0${String(orders.length + 1).padStart(2, '0')}`;
-      setOrders((prev) => [{ id: newId, ...form }, ...prev]);
-    }
-    closeModal();
+  const handleSave = async () => {
+    try {
+      if (editPO) {
+        const updated = await api.put(`/purchase-orders/${editPO.id}`, form);
+        setOrders((prev) => prev.map((o) => o.id === editPO.id ? updated : o));
+      } else {
+        const newId = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
+        const created = await api.post('/purchase-orders', { id: newId, ...form });
+        setOrders((prev) => [created, ...prev]);
+      }
+      closeModal();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeletePO = async (id) => {
+    try {
+      await api.delete(`/purchase-orders/${id}`);
+      setOrders((prev) => prev.filter((o) => o.id !== id));
+    } catch (err) { console.error(err); }
   };
 
   const columns = [
@@ -267,7 +285,7 @@ const PurchaseOrders = () => {
             <label className="fsp-label">Supplier *</label>
             <select className="fsp-select" value={form.supplier}
               onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))}>
-              {suppliers.map((s) => <option key={s.id}>{s.name}</option>)}
+              {supplierList.map((s) => <option key={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>

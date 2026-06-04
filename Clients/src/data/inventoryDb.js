@@ -1,104 +1,43 @@
 // =====================================================
-//  Inventory Stock Database — localStorage layer
-//  Tracks current stock quantities separately from
-//  the static mockData definitions.
-//  Key: "adjmarine_inventory_stock"  →  { [itemId]: number }
+//  Inventory Stock Database — MongoDB-backed via REST API
 // =====================================================
-
-import { inventoryItems } from './mockData';
-
-const KEY = 'adjmarine_inventory_stock';
-
-/* ── internal helpers ─────────────────────────────── */
-function loadMap() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-export function persistMap(map) {
-  try { localStorage.setItem(KEY, JSON.stringify(map)); } catch (e) {
-    console.warn('[inventoryDb] localStorage write failed:', e);
-  }
-}
+import api from '../services/api';
 
 /**
- * Return the stock map { [itemId]: currentStock }.
- * Seeds from mockData on first run.
+ * Returns { [itemId]: currentStock } map from API.
  */
-function getStockMap() {
-  const stored = loadMap();
-  if (stored) return stored;
+export async function getInventoryStockMap() {
+  const items = await api.get('/inventory');
   const map = {};
-  inventoryItems.forEach((item) => { map[item.id] = item.currentStock; });
-  persistMap(map);
+  items.forEach((item) => { map[item.id] = item.currentStock; });
   return map;
 }
 
-/* ══════════════════════════════════════════════════
-   READ
-   ══════════════════════════════════════════════════ */
-
-/** Returns the full { [itemId]: quantity } map. */
-export function getInventoryStockMap() {
-  return getStockMap();
-}
-
-/** Returns current stock for a single item. */
-export function getItemStock(itemId) {
-  return getStockMap()[itemId] ?? 0;
+/** Returns all items with live stock from API. */
+export async function getInventoryItemsWithStock() {
+  return api.get('/inventory');
 }
 
 /**
- * Returns all inventory items merged with live stock quantities.
- * Use this wherever you need the full item list with up-to-date stock.
+ * Subtract quantities for multiple items.
+ * Returns updated { [itemId]: newQty } map.
  */
-export function getInventoryItemsWithStock() {
-  const map = getStockMap();
-  return inventoryItems.map((item) => ({
-    ...item,
-    currentStock: map[item.id] ?? item.currentStock,
-  }));
-}
-
-/* ══════════════════════════════════════════════════
-   WRITE — bulk operations (used by Projects page)
-   ══════════════════════════════════════════════════ */
-
-/**
- * Subtract quantities for multiple items (project stock-in).
- * Clamps to 0 — stock cannot go negative.
- * Returns the updated map.
- */
-export function deductMultipleStock(stockMap, items) {
-  const updated = { ...stockMap };
-  items.forEach(({ itemId, quantity }) => {
-    const current = Number(updated[itemId] ?? 0);
-    updated[itemId] = Math.max(0, current - Number(quantity));
-  });
-  persistMap(updated);
-  return updated;
+export async function deductMultipleStock(_map, items) {
+  return api.post('/inventory/bulk-deduct', { items });
 }
 
 /**
- * Restore quantities for multiple items (on submission edit / delete).
- * Returns the updated map.
+ * Restore quantities for multiple items.
+ * Returns updated { [itemId]: newQty } map.
  */
-export function restoreMultipleStock(stockMap, items) {
-  const updated = { ...stockMap };
-  items.forEach(({ itemId, quantity }) => {
-    const current = Number(updated[itemId] ?? 0);
-    updated[itemId] = current + Number(quantity);
-  });
-  persistMap(updated);
-  return updated;
+export async function restoreMultipleStock(_map, items) {
+  return api.post('/inventory/bulk-restore', { items });
 }
 
-/** Reset all stock back to the mockData defaults. */
-export function resetInventoryStock() {
-  const map = {};
-  inventoryItems.forEach((item) => { map[item.id] = item.currentStock; });
-  persistMap(map);
-  return map;
+/** Update a single item's stock quantity. */
+export async function updateItemStock(itemId, currentStock) {
+  return api.put(`/inventory/${itemId}`, { currentStock });
 }
+
+/** no-op: API handles persistence */
+export function persistMap() {}
