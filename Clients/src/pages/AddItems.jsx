@@ -19,9 +19,9 @@ import {
   getStockStatus, getStockPercent, getStockBarClass,
   formatCurrency, formatDate, getDaysUntilExpiry,
   getEnrichedItems, itemUsageData,
-  stockTransactions as SEED_TRANSACTIONS,
 } from '../data/mockData';
-import { getCurrentUser } from '../data/loginDb';
+import api from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -376,13 +376,9 @@ const ItemDrawer = ({ item, onClose, onEdit }) => {
    ══════════════════════════════════════════════════════ */
 const AddItems = () => {
   const { stockMap, adjustStock } = useInventoryStock();
+  const { user: currentUser } = useAuth();
 
-  /*
-   * `baseItems` holds catalogue metadata (name, category, unitCost …).
-   * `liveItems` overlays the shared stockMap on top — single source of truth.
-   * We never duplicate currentStock in two separate state slices.
-   */
-  const [baseItems, setBaseItems] = useState(() => getEnrichedItems());
+  const [baseItems, setBaseItems] = useState([]);
 
   const liveItems = useMemo(() =>
     baseItems.map((item) => ({
@@ -409,12 +405,32 @@ const AddItems = () => {
   const [stockClock, setStockClock]         = useState(() => new Date().toLocaleTimeString());
   const [expandedIds, setExpandedIds]       = useState(new Set());
   const [stockPreCheckId, setStockPreCheckId] = useState(null);
-  const [transactions, setTransactions]           = useState(() => [...SEED_TRANSACTIONS]);
+  const [transactions, setTransactions]           = useState([]);
   const [editHistoryRecord, setEditHistoryRecord] = useState(null); // { itemId, recordId }
   const [editHistoryForm, setEditHistoryForm]     = useState({ qty: '', rate: '', desc: '' });
   const [deleteHistoryRecord, setDeleteHistoryRecord] = useState(null); // { itemId, recordId, qty }
 
-  const currentUser = getCurrentUser();
+  useEffect(() => {
+    const enrichedMap = Object.fromEntries(getEnrichedItems().map((e) => [e.id, e]));
+    api.get('/inventory')
+      .then((items) => setBaseItems(items.map((item) => ({
+        ...(enrichedMap[item.id] || { urgency: 'low', history: [0,0,0,0,0,0,0], dailyUsage: 0, weeklyUsage: 0, monthlyUsage: 0, totalConsumed: 0, stockLeftPct: 100, consumedPct: 0, totalValue: 0, daysRemaining: 999, peakDay: 'N/A' }),
+        ...item,
+      }))))
+      .catch(console.error);
+    api.get('/stock-history')
+      .then((map) => {
+        const flat = Object.values(map).flat().map((r) => ({
+          id: r.id, date: r.timestamp ? r.timestamp.split('T')[0] : '', itemId: r.itemId,
+          item: r.itemName || '', category: r.category || '', type: r.type || 'IN',
+          qty: r.qty, unit: r.unit, unitCost: r.rate,
+          totalCost: +(r.qty * r.rate).toFixed(2),
+          supplier: r.supplier || '', loggedBy: r.loggedBy || '', notes: r.desc || '',
+        }));
+        setTransactions(flat);
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (!showStockModal) return;
@@ -454,23 +470,31 @@ const AddItems = () => {
   const openEdit   = useCallback((item) => { setEditItem(item); setForm({ ...item }); setShowModal(true); }, []);
   const closeModal = useCallback(() => { setShowModal(false); setEditItem(null); }, []);
 
-  const handleSave = () => {
-    if (editItem) {
-      const oldStock = stockMap[editItem.id] ?? editItem.currentStock;
-      const newStock = Number(form.currentStock);
-      const delta    = newStock - oldStock;
-      setBaseItems((prev) => prev.map((i) => i.id === editItem.id ? { ...i, ...form } : i));
-      if (delta !== 0) adjustStock(editItem.id, delta);
-    } else {
-      const newId = `INV-${String(baseItems.length + 1).padStart(3, '0')}`;
-      setBaseItems((prev) => [...prev, { id: newId, ...form, urgency: 'low', history: [0,0,0,0,0,0,0], dailyUsage: 0, weeklyUsage: 0, monthlyUsage: 0, totalConsumed: 0, stockLeftPct: 100, consumedPct: 0, totalValue: 0, daysRemaining: 999, peakDay: 'N/A', lastRestocked: 'N/A', restockQty: 0 }]);
-    }
+  const handleSave = async () => {
+    try {
+      if (editItem) {
+        const oldStock = stockMap[editItem.id] ?? editItem.currentStock;
+        const newStock = Number(form.currentStock);
+        const delta    = newStock - oldStock;
+        await api.put(`/inventory/${editItem.id}`, form);
+        setBaseItems((prev) => prev.map((i) => i.id === editItem.id ? { ...i, ...form } : i));
+        if (delta !== 0) adjustStock(editItem.id, delta);
+      } else {
+        const newId = `INV-${String(baseItems.length + 1).padStart(3, '0')}`;
+        const payload = { id: newId, ...form };
+        await api.post('/inventory', payload);
+        setBaseItems((prev) => [...prev, { ...payload, urgency: 'low', history: [0,0,0,0,0,0,0], dailyUsage: 0, weeklyUsage: 0, monthlyUsage: 0, totalConsumed: 0, stockLeftPct: 100, consumedPct: 0, totalValue: 0, daysRemaining: 999, peakDay: 'N/A', lastRestocked: 'N/A', restockQty: 0 }]);
+      }
+    } catch (err) { console.error('Save failed:', err); }
     closeModal();
     setSelected(null);
   };
 
-  const handleDelete = (id) => {
-    setBaseItems((prev) => prev.filter((i) => i.id !== id));
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/inventory/${id}`);
+      setBaseItems((prev) => prev.filter((i) => i.id !== id));
+    } catch (err) { console.error('Delete failed:', err); }
     setDeleteId(null);
     if (selectedItem?.id === id) setSelected(null);
   };
@@ -487,12 +511,12 @@ const AddItems = () => {
     setShowStockModal(true);
   }, [liveItems]);
 
-  const handleStockSave = () => {
+  const handleStockSave = async () => {
     const toSave = liveItems.filter((item) => stockChecked[item.id] && Number(stockQtys[item.id] || 0) > 0);
     if (toSave.length === 0) return;
     const today = new Date().toISOString().split('T')[0];
     const newTxns = [];
-    toSave.forEach((item) => {
+    for (const item of toSave) {
       const qty  = Number(stockQtys[item.id]);
       const rate = Number(stockPrices[item.id] || item.unitCost);
       setBaseItems((prev) => prev.map((i) => {
@@ -505,23 +529,18 @@ const AddItems = () => {
       adjustStock(item.id, qty);
       if (selectedItem?.id === item.id)
         setSelected((prev) => ({ ...prev, currentStock: (stockMap[prev.id] ?? prev.currentStock) + qty, unitCost: rate }));
-      newTxns.push({
-        id:        `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-        date:      today,
-        itemId:    item.id,
-        item:      item.name,
-        category:  item.category,
-        type:      'IN',
-        qty,
-        unit:      item.unit,
-        unitCost:  rate,
-        totalCost: +(qty * rate).toFixed(2),
-        supplier:  item.supplier || '',
-        usageType: null,
-        loggedBy:  currentUser?.username || 'Admin',
-        notes:     stockDescs[item.id] || '',
-      });
-    });
+      try {
+        const saved = await api.post(`/stock-history/${item.id}`, {
+          timestamp: new Date().toISOString(), qty, rate, unit: item.unit,
+          desc: stockDescs[item.id] || '', type: 'IN',
+          itemName: item.name, category: item.category,
+          supplier: item.supplier || '', loggedBy: currentUser?.username || 'Admin',
+        });
+        newTxns.push({ id: saved.id, date: today, itemId: item.id, item: item.name, category: item.category, type: 'IN', qty, unit: item.unit, unitCost: rate, totalCost: +(qty * rate).toFixed(2), supplier: item.supplier || '', loggedBy: currentUser?.username || 'Admin', notes: stockDescs[item.id] || '' });
+      } catch {
+        newTxns.push({ id: `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, date: today, itemId: item.id, item: item.name, category: item.category, type: 'IN', qty, unit: item.unit, unitCost: rate, totalCost: +(qty * rate).toFixed(2), supplier: item.supplier || '', loggedBy: currentUser?.username || 'Admin', notes: stockDescs[item.id] || '' });
+      }
+    }
     setTransactions((prev) => [...newTxns, ...prev]);
     setExpandedIds((prev) => { const n = new Set(prev); toSave.forEach((i) => n.add(i.id)); return n; });
     setStockSuccess(true);
@@ -552,7 +571,7 @@ const AddItems = () => {
     setEditHistoryForm({ qty: String(rec.qty), rate: String(rec.unitCost), desc: rec.notes || '' });
   }, []);
 
-  const handleHistoryEditSave = () => {
+  const handleHistoryEditSave = async () => {
     const { itemId, recordId } = editHistoryRecord;
     const oldRecord = transactions.find((t) => t.id === recordId);
     if (!oldRecord) { setEditHistoryRecord(null); return; }
@@ -562,6 +581,9 @@ const AddItems = () => {
     const newRate = Number(editHistoryForm.rate);
     const delta   = newQty - oldQty;
 
+    try {
+      await api.put(`/stock-history/${itemId}/${recordId}`, { qty: newQty, rate: newRate, desc: editHistoryForm.desc });
+    } catch (err) { console.error('History edit failed:', err); }
     setTransactions((prev) => prev.map((t) =>
       t.id === recordId
         ? { ...t, qty: newQty, unitCost: newRate, totalCost: +(newQty * newRate).toFixed(2), notes: editHistoryForm.desc }
@@ -571,7 +593,10 @@ const AddItems = () => {
     setEditHistoryRecord(null);
   };
 
-  const handleHistoryDelete = useCallback((itemId, recordId, qty) => {
+  const handleHistoryDelete = useCallback(async (itemId, recordId, qty) => {
+    try {
+      await api.delete(`/stock-history/${itemId}/${recordId}`);
+    } catch (err) { console.error('History delete failed:', err); }
     setTransactions((prev) => prev.filter((t) => t.id !== recordId));
     adjustStock(itemId, -Number(qty));
     setDeleteHistoryRecord(null);

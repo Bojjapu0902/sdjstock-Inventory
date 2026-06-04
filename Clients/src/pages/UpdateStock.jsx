@@ -1,5 +1,5 @@
 ﻿import './UpdateStock.css';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   MdFileDownload, MdCheckCircle, MdSystemUpdateAlt,
   MdTrendingDown, MdInventory2, MdRefresh, MdArrowUpward,
@@ -9,8 +9,10 @@ import {
   categories,
   getStockPercent, getStockBarClass,
   formatCurrency, formatDate,
-  getEnrichedItems, stockTransactions,
 } from '../data/mockData';
+import api from '../services/api';
+import { useInventoryStock } from '../hooks/useInventoryStock';
+import { useAuth } from '../contexts/AuthContext';
 
 const TODAY = new Date().toISOString().split('T')[0];
 
@@ -132,8 +134,28 @@ const SuccessSplash = ({ message }) => (
    UPDATE STOCK PAGE
    ════════════════════════════════════════════════════ */
 const UpdateStock = () => {
-  const [items, setItems] = useState(() => getEnrichedItems());
-  const [transactions, setTransactions] = useState(stockTransactions);
+  const { stockMap, adjustStock } = useInventoryStock();
+  const { user: currentUser } = useAuth();
+
+  const [items, setItems] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+
+  useEffect(() => {
+    api.get('/inventory').then(setItems).catch(console.error);
+    api.get('/stock-history')
+      .then((map) => {
+        const flat = Object.values(map).flat().map((r) => ({
+          id: r.id, date: r.timestamp ? r.timestamp.split('T')[0] : '', itemId: r.itemId,
+          item: r.itemName || '', category: r.category || '', type: r.type || 'IN',
+          qty: r.qty, unit: r.unit, unitCost: r.rate,
+          totalCost: +(r.qty * r.rate).toFixed(2),
+          supplier: r.supplier || '', usageType: r.usageType || '',
+          loggedBy: r.loggedBy || '', notes: r.desc || '',
+        }));
+        setTransactions(flat.sort((a, b) => new Date(b.date) - new Date(a.date)));
+      })
+      .catch(console.error);
+  }, []);
   const [activeTab, setActiveTab] = useState('receive');
 
   const [receiveForm, setReceiveForm] = useState(RECEIVE_INIT);
@@ -172,36 +194,30 @@ const UpdateStock = () => {
       : { ...f, itemId, category: '', supplier: '', unit: '', rate: '' });
   };
 
-  const handleReceiveSave = () => {
+  const handleReceiveSave = async () => {
     const { itemId, supplier, date, quantity, rate, notes } = receiveForm;
     if (!itemId || !quantity || !rate) return;
     const qty = Number(quantity);
     const newRate = Number(rate);
     const item = items.find((i) => i.id === itemId);
 
-    const txn = {
-      id: `TXN-${String(transactions.length + 1).padStart(3, '0')}`,
-      date, itemId, item: item.name, category: item.category,
-      type: 'IN', qty, unit: item.unit, unitCost: newRate,
-      totalCost: +(qty * newRate).toFixed(2),
-      supplier: supplier || item.supplier,
-      usageType: null, loggedBy: 'Current User', notes,
-    };
+    await adjustStock(itemId, qty);
+    setItems((prev) => prev.map((it) => it.id === itemId
+      ? { ...it, currentStock: (stockMap[itemId] ?? it.currentStock) + qty, unitCost: newRate, supplier: supplier || it.supplier }
+      : it));
 
+    let txnId = `TXN-${Date.now()}`;
+    try {
+      const saved = await api.post(`/stock-history/${itemId}`, {
+        timestamp: new Date(date).toISOString(), qty, rate: newRate, unit: item.unit,
+        desc: notes, type: 'IN', itemName: item.name, category: item.category,
+        supplier: supplier || item.supplier, loggedBy: currentUser?.username || 'Admin',
+      });
+      txnId = saved.id;
+    } catch (err) { console.error('History save failed:', err); }
+
+    const txn = { id: txnId, date, itemId, item: item.name, category: item.category, type: 'IN', qty, unit: item.unit, unitCost: newRate, totalCost: +(qty * newRate).toFixed(2), supplier: supplier || item.supplier, usageType: null, loggedBy: currentUser?.username || 'Admin', notes };
     setTransactions((prev) => [txn, ...prev]);
-    setItems((prev) => prev.map((it) => {
-      if (it.id !== itemId) return it;
-      const ns = it.currentStock + qty;
-      const nd = it.dailyUsage > 0 ? Math.floor(ns / it.dailyUsage) : 999;
-      return {
-        ...it, currentStock: ns, unitCost: newRate,
-        supplier: supplier || it.supplier,
-        urgency: nd <= 3 ? 'critical' : nd <= 7 ? 'high' : nd <= 14 ? 'medium' : 'low',
-        daysRemaining: nd,
-        stockLeftPct: Math.min(Math.round((ns / it.maxStock) * 100), 100),
-      };
-    }));
-
     setReceiveSuccess(true);
     setTimeout(() => { setReceiveSuccess(false); setReceiveForm(RECEIVE_INIT); }, 1800);
   };
@@ -214,35 +230,31 @@ const UpdateStock = () => {
       : { ...f, itemId, category: '', unit: '' });
   };
 
-  const handleUsageSave = () => {
+  const handleUsageSave = async () => {
     const { itemId, date, quantity, usageType, loggedBy, notes } = usageForm;
     if (!itemId || !quantity) return;
     const qty = Number(quantity);
     const item = items.find((i) => i.id === itemId);
-    if (!item || qty > item.currentStock) return;
+    const currentStock = stockMap[itemId] ?? item?.currentStock ?? 0;
+    if (!item || qty > currentStock) return;
 
-    const txn = {
-      id: `TXN-${String(transactions.length + 1).padStart(3, '0')}`,
-      date, itemId, item: item.name, category: item.category,
-      type: 'OUT', qty, unit: item.unit, unitCost: item.unitCost,
-      totalCost: +(qty * item.unitCost).toFixed(2),
-      supplier: null, usageType,
-      loggedBy: loggedBy || 'Current User', notes,
-    };
+    await adjustStock(itemId, -qty);
+    setItems((prev) => prev.map((it) => it.id === itemId
+      ? { ...it, currentStock: Math.max(currentStock - qty, 0) }
+      : it));
 
+    let txnId = `TXN-${Date.now()}`;
+    try {
+      const saved = await api.post(`/stock-history/${itemId}`, {
+        timestamp: new Date(date).toISOString(), qty, rate: item.unitCost, unit: item.unit,
+        desc: notes, type: 'OUT', itemName: item.name, category: item.category,
+        usageType, loggedBy: loggedBy || currentUser?.username || 'Admin',
+      });
+      txnId = saved.id;
+    } catch (err) { console.error('History save failed:', err); }
+
+    const txn = { id: txnId, date, itemId, item: item.name, category: item.category, type: 'OUT', qty, unit: item.unit, unitCost: item.unitCost, totalCost: +(qty * item.unitCost).toFixed(2), supplier: null, usageType, loggedBy: loggedBy || currentUser?.username || 'Admin', notes };
     setTransactions((prev) => [txn, ...prev]);
-    setItems((prev) => prev.map((it) => {
-      if (it.id !== itemId) return it;
-      const ns = Math.max(it.currentStock - qty, 0);
-      const nd = it.dailyUsage > 0 ? Math.floor(ns / it.dailyUsage) : 999;
-      return {
-        ...it, currentStock: ns,
-        urgency: nd <= 3 ? 'critical' : nd <= 7 ? 'high' : nd <= 14 ? 'medium' : 'low',
-        daysRemaining: nd,
-        stockLeftPct: Math.min(Math.round((ns / it.maxStock) * 100), 100),
-      };
-    }));
-
     setUsageSuccess(true);
     setTimeout(() => { setUsageSuccess(false); setUsageForm(USAGE_INIT); }, 1800);
   };
@@ -260,13 +272,15 @@ const UpdateStock = () => {
 
   /* ── Derived values ─────────────────────────────── */
   const receiveItem = items.find((i) => i.id === receiveForm.itemId);
+  const receiveItemLive = receiveItem ? { ...receiveItem, currentStock: stockMap[receiveItem.id] ?? receiveItem.currentStock } : null;
   const receiveTotal = receiveForm.quantity && receiveForm.rate
     ? (Number(receiveForm.quantity) * Number(receiveForm.rate)).toFixed(2) : null;
 
   const usageItem = items.find((i) => i.id === usageForm.itemId);
-  const usageCost = usageForm.quantity && usageItem
-    ? (Number(usageForm.quantity) * usageItem.unitCost).toFixed(2) : null;
-  const isOverStock = usageItem && usageForm.quantity && Number(usageForm.quantity) > usageItem.currentStock;
+  const usageItemLive = usageItem ? { ...usageItem, currentStock: stockMap[usageItem.id] ?? usageItem.currentStock } : null;
+  const usageCost = usageForm.quantity && usageItemLive
+    ? (Number(usageForm.quantity) * usageItemLive.unitCost).toFixed(2) : null;
+  const isOverStock = usageItemLive && usageForm.quantity && Number(usageForm.quantity) > usageItemLive.currentStock;
 
   /* ── Render ─────────────────────────────────────── */
   return (
@@ -351,7 +365,7 @@ const UpdateStock = () => {
                   </div>
 
                   {/* Stock preview */}
-                  {receiveItem && <StockBanner item={receiveItem} nextQty={receiveForm.quantity} mode="receive" />}
+                  {receiveItemLive && <StockBanner item={receiveItemLive} nextQty={receiveForm.quantity} mode="receive" />}
 
                   {/* Form grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 18px' }}>
@@ -500,7 +514,7 @@ const UpdateStock = () => {
                   </div>
 
                   {/* Stock preview */}
-                  {usageItem && <StockBanner item={usageItem} nextQty={usageForm.quantity} mode="usage" />}
+                  {usageItemLive && <StockBanner item={usageItemLive} nextQty={usageForm.quantity} mode="usage" />}
 
                   {/* Form grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 18px' }}>

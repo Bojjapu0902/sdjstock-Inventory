@@ -191,7 +191,7 @@ const Users = () => {
           <p>Manage admin and project user accounts</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-secondary-fsp" onClick={() => setUsers(getUsers())}>
+          <button className="btn-secondary-fsp" onClick={() => api.get('/users').then(setUsers).catch(console.error)}>
             <MdRefresh /> Refresh
           </button>
           <button className="btn-primary-fsp" onClick={openAdd}>

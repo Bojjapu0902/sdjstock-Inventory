@@ -8,6 +8,12 @@ const stockHistorySchema = new mongoose.Schema({
   rate:      { type: Number, default: 0 },
   unit:      { type: String, default: '' },
   desc:      { type: String, default: '' },
+  type:      { type: String, default: 'IN' },
+  itemName:  { type: String, default: '' },
+  category:  { type: String, default: '' },
+  supplier:  { type: String, default: '' },
+  usageType: { type: String, default: '' },
+  loggedBy:  { type: String, default: '' },
 });
 
 module.exports = mongoose.model('StockHistory', stockHistorySchema);

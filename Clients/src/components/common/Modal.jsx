@@ -22,9 +22,9 @@ const Modal = ({ show, onClose, title, children, footer, size = 'md' }) => {
   const sizeMap = { sm: '400px', md: '560px', lg: '760px', xl: '960px' };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-backdrop" onClick={onClose} />
-      <div className="modal-dialog" style={{ maxWidth: sizeMap[size] || sizeMap.md }}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-backdrop" />
+      <div className="modal-dialog" style={{ maxWidth: sizeMap[size] || sizeMap.md }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h5>{title}</h5>
           <button className="modal-close-btn" onClick={onClose}><MdClose /></button>

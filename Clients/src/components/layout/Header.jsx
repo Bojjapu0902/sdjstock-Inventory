@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './Header.css';
 import { useLocation } from 'react-router-dom';
 import {
@@ -9,8 +9,7 @@ import {
 } from 'react-icons/md';
 import { useAuth }             from '../../contexts/AuthContext';
 import Modal                   from '../common/Modal';
-import { getUsers, createUser } from '../../data/loginDb';
-import { getProjects }          from '../../data/projectsDb';
+import api from '../../services/api';
 
 const pageMap = {
   '/':             { title: 'Dashboard',       sub: 'Overview of your food stock & inventory' },
@@ -63,13 +62,16 @@ const Header = ({ onMenuClick }) => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  /* ── projects list (refreshed each time modal opens) ── */
-  const projects = useMemo(() => getProjects(), [showModal]);
+  /* ── projects + takenProjectIds (fetched when modal opens) ── */
+  const [projects,       setProjects]       = useState([]);
+  const [takenProjectIds, setTakenIds]      = useState(new Set());
 
-  /* IDs of projects that already have a user assigned */
-  const takenProjectIds = useMemo(() => {
-    const users = getUsers();
-    return new Set(users.filter((u) => u.projectId).map((u) => u.projectId));
+  useEffect(() => {
+    if (!showModal) return;
+    Promise.all([api.get('/projects'), api.get('/users')]).then(([projs, users]) => {
+      setProjects(Array.isArray(projs) ? projs : []);
+      setTakenIds(new Set((Array.isArray(users) ? users : []).filter((u) => u.projectId).map((u) => u.projectId)));
+    }).catch(() => {});
   }, [showModal]);
 
   /* ── create user handlers ── */
@@ -82,7 +84,7 @@ const Header = ({ onMenuClick }) => {
     setFormError('');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setFormError('');
     if (!form.username.trim() || !form.password) {
       setFormError('Username and password are required.');
@@ -96,18 +98,21 @@ const Header = ({ onMenuClick }) => {
       setFormError('Passwords do not match.');
       return;
     }
-    const result = createUser(getUsers(), {
-      name:      form.name,
-      username:  form.username,
-      password:  form.password,
-      role:      form.role,
-      email:     form.email,
-      phone:     form.phone,
-      projectId: form.role === 'User' ? (form.projectId || null) : null,
-    });
-    if (result.error) { setFormError(result.error); return; }
-    setSuccess(true);
-    setTimeout(() => { closeModal(); }, 1600);
+    try {
+      await api.post('/users', {
+        name:      form.name,
+        username:  form.username,
+        password:  form.password,
+        role:      form.role,
+        email:     form.email,
+        phone:     form.phone,
+        projectId: form.role === 'User' ? (form.projectId || null) : null,
+      });
+      setSuccess(true);
+      setTimeout(() => { closeModal(); }, 1600);
+    } catch (err) {
+      setFormError(err.message || 'Failed to create user.');
+    }
   };
 
   /* ── shared field style ── */

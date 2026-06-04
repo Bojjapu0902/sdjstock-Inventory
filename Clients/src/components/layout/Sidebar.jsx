@@ -5,7 +5,7 @@ import {
   MdInventory, MdShoppingCart, MdPeople,
   MdBarChart, MdSettings, MdLogout,
   MdRestaurant, MdSystemUpdateAlt, MdWarehouse, MdPlaylistAdd,
-  MdManageAccounts,
+  MdManageAccounts, MdDeleteSweep,
 } from 'react-icons/md';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -23,6 +23,7 @@ const Sidebar = ({ collapsed, onToggle, mobileVisible, onMobileClose }) => {
         { to: '/orders',        icon: <MdShoppingCart />,    label: 'Purchase Orders', badge: null },
         { to: '/suppliers',     icon: <MdPeople />,          label: 'Suppliers',       badge: null },
         { to: '/projects',      icon: <MdWarehouse />,       label: 'Projects',        badge: null },
+        { to: '/wastage',       icon: <MdDeleteSweep />,     label: 'Wastage',         badge: null },
       ],
     },
     {
