@@ -1,36 +1,26 @@
-﻿import './Wastage.css';
+import './Wastage.css';
 import React, { useState, useMemo, useEffect } from 'react';
-import { MdAdd, MdDelete, MdFileDownload, MdRefresh, MdTrendingDown } from 'react-icons/md';
+import { MdFileDownload, MdRefresh, MdTrendingDown } from 'react-icons/md';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts';
 import DataTable from '../components/common/DataTable';
 import StatusBadge from '../components/common/StatusBadge';
-import Modal from '../components/common/Modal';
 import {
   wastageByReason, wastageByCategory,
   monthlyWastageCost, categories, formatCurrency, formatDate,
-} from '../data/mockData';
+} from '../services/mockData';
 import api from '../services/api';
 
 const REASON_OPTIONS = ['Expired', 'Spoilage', 'Over-preparation', 'Freezer burn', 'Contamination', 'Mold', 'Theft', 'Damaged', 'Other'];
 const REASON_COLORS  = ['#EF4444','#F59E0B','#3B82F6','#8B5CF6','#10B981','#EC4899','#06B6D4','#F97316','#94A3B8'];
-
-const INITIAL_FORM = {
-  date: new Date().toISOString().split('T')[0],
-  item: '', category: 'Produce', qty: '', unit: 'kg',
-  reason: 'Expired', costImpact: '', loggedBy: '', notes: '',
-};
 
 const Wastage = () => {
   const [entries, setEntries]     = useState([]);
   const [search, setSearch]       = useState('');
   const [catFilter, setCatFilter] = useState('All');
   const [reasonFilter, setReason] = useState('All');
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm]           = useState(INITIAL_FORM);
-  const [deleteId, setDeleteId]   = useState(null);
 
   useEffect(() => {
     api.get('/wastage').then(setEntries).catch(console.error);
@@ -43,35 +33,12 @@ const Wastage = () => {
     return matchSearch && matchCat && matchReason;
   }), [entries, search, catFilter, reasonFilter]);
 
-  const totalCost   = entries.reduce((sum, e) => sum + e.costImpact, 0);
-  const totalQty    = entries.reduce((sum, e) => sum + e.qty, 0);
-  const topReason   = wastageByReason.reduce((a, b) => a.cost > b.cost ? a : b, { reason: '', cost: 0 });
-  const thisWeek    = entries.filter((e) => {
-    const d = new Date(e.date);
-    const now = new Date();
-    const diff = (now - d) / (1000 * 60 * 60 * 24);
+  const totalCost = entries.reduce((sum, e) => sum + e.costImpact, 0);
+  const topReason = wastageByReason.reduce((a, b) => a.cost > b.cost ? a : b, { reason: '', cost: 0 });
+  const thisWeek  = entries.filter((e) => {
+    const diff = (new Date() - new Date(e.date)) / (1000 * 60 * 60 * 24);
     return diff <= 7;
   }).reduce((sum, e) => sum + e.costImpact, 0);
-
-  const openAdd  = () => { setForm(INITIAL_FORM); setShowModal(true); };
-  const closeModal = () => setShowModal(false);
-
-  const handleSave = async () => {
-    try {
-      const newId = `WST-${Date.now()}`;
-      const created = await api.post('/wastage', { id: newId, ...form });
-      setEntries((prev) => [created, ...prev]);
-      closeModal();
-    } catch (err) { console.error(err); }
-  };
-
-  const handleDelete = async (id) => {
-    try {
-      await api.delete(`/wastage/${id}`);
-      setEntries((prev) => prev.filter((e) => e.id !== id));
-    } catch (err) { console.error(err); }
-    setDeleteId(null);
-  };
 
   const columns = [
     {
@@ -125,19 +92,10 @@ const Wastage = () => {
         </span>
       ),
     },
-    {
-      key: 'actions', label: '',
-      render: (_, row) => (
-        <button className="btn-icon-sm danger" onClick={() => setDeleteId(row.id)} title="Delete">
-          <MdDelete />
-        </button>
-      ),
-    },
   ];
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header">
         <div className="page-header-left">
           <h1>Wastage Log</h1>
@@ -145,17 +103,15 @@ const Wastage = () => {
         </div>
         <div className="page-header-actions">
           <button className="btn-secondary-fsp"><MdFileDownload /> Export</button>
-          <button className="btn-primary-fsp" onClick={openAdd}><MdAdd /> Log Wastage</button>
         </div>
       </div>
 
-      {/* KPI Strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
         {[
-          { label: 'Total Entries',    val: entries.length,          color: 'var(--primary)' },
-          { label: 'Total Cost Impact',val: formatCurrency(totalCost), color: 'var(--danger)'  },
-          { label: 'This Week Loss',   val: formatCurrency(thisWeek), color: 'var(--warning)' },
-          { label: 'Top Reason',       val: topReason.reason,        color: 'var(--info)'    },
+          { label: 'Total Entries',     val: entries.length,          color: 'var(--primary)' },
+          { label: 'Total Cost Impact', val: formatCurrency(totalCost), color: 'var(--danger)'  },
+          { label: 'This Week Loss',    val: formatCurrency(thisWeek), color: 'var(--warning)' },
+          { label: 'Top Reason',        val: topReason.reason,        color: 'var(--info)'    },
         ].map((s) => (
           <div key={s.label} className="fsp-card" style={{ padding: '16px 20px' }}>
             <div style={{ fontSize: s.label === 'Top Reason' ? 16 : 24, fontWeight: 800, color: s.color }}>{s.val}</div>
@@ -166,8 +122,6 @@ const Wastage = () => {
 
       {/* Charts Row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
-
-        {/* Monthly Trend */}
         <div className="fsp-card">
           <div className="fsp-card-header">
             <div>
@@ -191,7 +145,6 @@ const Wastage = () => {
           </div>
         </div>
 
-        {/* By Reason */}
         <div className="fsp-card">
           <div className="fsp-card-header">
             <div>
@@ -222,7 +175,6 @@ const Wastage = () => {
           </div>
         </div>
 
-        {/* By Category */}
         <div className="fsp-card">
           <div className="fsp-card-header">
             <div>
@@ -244,7 +196,6 @@ const Wastage = () => {
         </div>
       </div>
 
-      {/* Table Card */}
       <div className="fsp-card">
         <div className="filter-toolbar">
           <div className="filter-search">
@@ -276,96 +227,6 @@ const Wastage = () => {
           emptyMessage="No wastage records match your filters."
         />
       </div>
-
-      {/* Log Wastage Modal */}
-      <Modal
-        show={showModal}
-        onClose={closeModal}
-        title="Log Wastage Event"
-        size="md"
-        footer={
-          <>
-            <button className="btn-secondary-fsp" onClick={closeModal}>Cancel</button>
-            <button className="btn-primary-fsp" onClick={handleSave}>Log Wastage</button>
-          </>
-        }
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
-          <div>
-            <label className="fsp-label">Date *</label>
-            <input className="fsp-input" type="date" value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-          </div>
-          <div>
-            <label className="fsp-label">Category</label>
-            <select className="fsp-select" value={form.category}
-              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
-              {categories.filter((c) => c !== 'All Categories').map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label className="fsp-label">Item Name *</label>
-            <input className="fsp-input" value={form.item}
-              onChange={(e) => setForm((f) => ({ ...f, item: e.target.value }))}
-              placeholder="e.g. Roma Tomatoes" />
-          </div>
-          <div>
-            <label className="fsp-label">Quantity</label>
-            <input className="fsp-input" type="number" step="0.1" value={form.qty}
-              onChange={(e) => setForm((f) => ({ ...f, qty: Number(e.target.value) }))} />
-          </div>
-          <div>
-            <label className="fsp-label">Unit</label>
-            <select className="fsp-select" value={form.unit}
-              onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}>
-              {['kg', 'g', 'L', 'mL', 'doz', 'pcs', 'ctn'].map((u) => <option key={u}>{u}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="fsp-label">Reason</label>
-            <select className="fsp-select" value={form.reason}
-              onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}>
-              {REASON_OPTIONS.map((r) => <option key={r}>{r}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="fsp-label">Cost Impact (₹)</label>
-            <input className="fsp-input" type="number" step="0.01" value={form.costImpact}
-              onChange={(e) => setForm((f) => ({ ...f, costImpact: Number(e.target.value) }))}
-              placeholder="0.00" />
-          </div>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label className="fsp-label">Logged By</label>
-            <input className="fsp-input" value={form.loggedBy}
-              onChange={(e) => setForm((f) => ({ ...f, loggedBy: e.target.value }))}
-              placeholder="e.g. Chef Marco" />
-          </div>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label className="fsp-label">Notes</label>
-            <textarea className="fsp-textarea" value={form.notes}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              placeholder="Additional context or notes…" />
-          </div>
-        </div>
-      </Modal>
-
-      {/* Delete Confirm */}
-      <Modal
-        show={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        title="Delete Wastage Record"
-        size="sm"
-        footer={
-          <>
-            <button className="btn-secondary-fsp" onClick={() => setDeleteId(null)}>Cancel</button>
-            <button className="btn-danger-fsp" onClick={() => handleDelete(deleteId)}>Delete Record</button>
-          </>
-        }
-      >
-        <p style={{ color: 'var(--text-secondary)', fontSize: 14, margin: 0 }}>
-          Are you sure you want to delete this wastage record? This action cannot be undone.
-        </p>
-      </Modal>
     </div>
   );
 };

@@ -14,7 +14,7 @@ import {
   stockTrendData, categoryDistribution, monthlyWastageCost,
   topItemsByValue, recentActivity, kpiData,
   inventoryItems, getDaysUntilExpiry, formatDate, formatCurrency,
-} from '../data/mockData';
+} from '../services/mockData';
 import { useInventoryStock } from '../hooks/useInventoryStock';
 
 // Custom Tooltip

@@ -5,10 +5,10 @@ import {
   deleteStockReceived, approveSubmission,
   getAllStockUsed, addStockUsed, deleteStockUsed,
   clearProjectStockReceived, clearProjectStockUsed,
-} from '../data/projectsDb';
+} from '../services/projectsDb';
 import {
   getUsers, deleteProjectUser, createUser, deleteUser,
-} from '../data/loginDb';
+} from '../services/loginDb';
 
 const ProjectsContext = createContext(null);
 

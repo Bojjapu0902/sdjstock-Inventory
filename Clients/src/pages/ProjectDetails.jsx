@@ -7,7 +7,7 @@ import {
   MdKeyboardArrowDown, MdKeyboardArrowUp, MdInfo,
   MdCheckCircle, MdLock,
 } from 'react-icons/md';
-import { getCurrentUser } from '../data/loginDb';
+import { getCurrentUser } from '../services/loginDb';
 import { useProjects }    from '../contexts/ProjectsContext';
 import { useAuth }        from '../contexts/AuthContext';
 

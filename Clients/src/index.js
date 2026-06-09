@@ -5,20 +5,14 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './styles/custom.css';
 
 import App from './App';
-import { AuthProvider }           from './contexts/AuthContext';
-import { ProjectsProvider }       from './contexts/ProjectsContext';
-import { InventoryStockProvider } from './hooks/useInventoryStock';
+import { AuthProvider } from './contexts/AuthContext';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <InventoryStockProvider>
-          <ProjectsProvider>
-            <App />
-          </ProjectsProvider>
-        </InventoryStockProvider>
+        <App />
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

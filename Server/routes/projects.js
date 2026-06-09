@@ -16,7 +16,8 @@ router.post('/', auth, async (req, res) => {
 
 router.put('/:id', auth, async (req, res) => {
   try {
-    const doc = await Project.findOneAndUpdate({ id: req.params.id }, req.body, { new: true }).lean();
+    const { _id, __v, ...update } = req.body;
+    const doc = await Project.findOneAndUpdate({ id: req.params.id }, { $set: update }, { new: true }).lean();
     if (!doc) return res.status(404).json({ error: 'Project not found' });
     res.json(doc);
   } catch (err) { res.status(500).json({ error: err.message }); }

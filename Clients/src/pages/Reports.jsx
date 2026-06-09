@@ -5,7 +5,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { monthlyWastageCost, stockTrendData, wastageByCategory, formatCurrency } from '../data/mockData';
+import { monthlyWastageCost, stockTrendData, wastageByCategory, formatCurrency } from '../services/mockData';
 
 const reportCards = [
   { title: 'Stock Summary Report',   desc: 'Current levels, low stock, overstocked items', icon: '📦', color: '#4F46E5', bg: '#EEF2FF' },

@@ -39,13 +39,13 @@ router.post('/', auth, async (req, res) => {
 // PUT /api/users/:id
 router.put('/:id', auth, async (req, res) => {
   try {
-    const update = { ...req.body };
+    const { _id, __v, ...update } = req.body;
     if (update.password) {
       update.password = await bcrypt.hash(update.password.trim(), 10);
     } else {
       delete update.password;
     }
-    const user = await User.findOneAndUpdate({ id: req.params.id }, update, { new: true }).lean();
+    const user = await User.findOneAndUpdate({ id: req.params.id }, { $set: update }, { new: true }).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(safeUser(user));
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-import { useAuth } from './contexts/AuthContext';
+import { useAuth }                from './contexts/AuthContext';
+import { InventoryStockProvider } from './hooks/useInventoryStock';
+import { ProjectsProvider }       from './contexts/ProjectsContext';
 
 import Layout         from './components/layout/Layout';
 import Loader         from './components/common/Loader';
@@ -31,30 +33,34 @@ const App = () => {
     : '/inventory';
 
   return (
-    <Routes>
-      {/* Project-user view: no sidebar */}
-      <Route path="/project/:projectId" element={<ProjectDetails />} />
+    <InventoryStockProvider>
+      <ProjectsProvider>
+        <Routes>
+          {/* Project-user view: no sidebar */}
+          <Route path="/project/:projectId" element={<ProjectDetails />} />
 
-      {/* Admin / operator view: full Layout with sidebar */}
-      <Route path="*" element={
-        <Layout>
-          <Routes>
-            <Route path="/"             element={<Navigate to={rootRedirect} replace />} />
-            <Route path="/inventory"    element={<Inventory />}      />
-            <Route path="/add-items"    element={<AddItems />}       />
-            <Route path="/stock-update" element={<UpdateStock />}    />
-            <Route path="/orders"       element={<PurchaseOrders />} />
-            <Route path="/suppliers"    element={<Suppliers />}      />
-            <Route path="/wastage"      element={<Wastage />}        />
-            <Route path="/reports"      element={<Reports />}        />
-            <Route path="/settings"     element={<Settings />}       />
-            <Route path="/projects"     element={<Projects />}       />
-            <Route path="/users"        element={<Users />}          />
-            <Route path="*"             element={<Navigate to="/" replace />} />
-          </Routes>
-        </Layout>
-      } />
-    </Routes>
+          {/* Admin / operator view: full Layout with sidebar */}
+          <Route path="*" element={
+            <Layout>
+              <Routes>
+                <Route path="/"             element={<Navigate to={rootRedirect} replace />} />
+                <Route path="/inventory"    element={<Inventory />}      />
+                <Route path="/add-items"    element={<AddItems />}       />
+                <Route path="/stock-update" element={<UpdateStock />}    />
+                <Route path="/orders"       element={<PurchaseOrders />} />
+                <Route path="/suppliers"    element={<Suppliers />}      />
+                <Route path="/wastage"      element={<Wastage />}        />
+                <Route path="/reports"      element={<Reports />}        />
+                <Route path="/settings"     element={<Settings />}       />
+                <Route path="/projects"     element={<Projects />}       />
+                <Route path="/users"        element={<Users />}          />
+                <Route path="*"             element={<Navigate to="/" replace />} />
+              </Routes>
+            </Layout>
+          } />
+        </Routes>
+      </ProjectsProvider>
+    </InventoryStockProvider>
   );
 };
 

@@ -1,27 +1,28 @@
-﻿import './AddItems.css';
+import './AddItems.css';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useInventoryStock } from '../hooks/useInventoryStock';
 import {
-  MdAdd, MdFileDownload, MdEdit, MdDelete, MdClose,
-  MdRefresh, MdShoppingCart, MdTrendingDown, MdInventory2,
+  MdFileDownload, MdClose,
+  MdRefresh, MdInventory2,
   MdLocationOn, MdCategory, MdCalendarToday, MdPerson,
-  MdAttachMoney, MdInfo, MdSystemUpdateAlt, MdKeyboardArrowDown,
-  MdCheckCircle, MdSearch,
+  MdAttachMoney, MdInfo,
+  MdKeyboardArrowDown, MdAdd, MdEdit, MdDelete,
 } from 'react-icons/md';
+import AddItemModal from './AddItemModal';
+import AddStockModal from './AddStockModal';
+import DeleteConfirmModal from './DeleteConfirmModal';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import StatusBadge from '../components/common/StatusBadge';
-import Modal       from '../components/common/Modal';
 import {
   categories,
   getStockStatus, getStockPercent, getStockBarClass,
   formatCurrency, formatDate, getDaysUntilExpiry,
   getEnrichedItems, itemUsageData,
-} from '../data/mockData';
+} from '../services/mockData';
 import api from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -31,13 +32,6 @@ const URGENCY_CONFIG = {
   medium:   { icon: '🔵', label: 'Medium — Plan Reorder',          color: '#3B82F6', bg: '#EFF6FF', border: 'rgba(59,130,246,0.2)'  },
   low:      { icon: '🟢', label: 'Healthy Stock Level',            color: '#10B981', bg: '#ECFDF5', border: 'rgba(16,185,129,0.2)'  },
 };
-
-const INITIAL_FORM = {
-  name: '', category: 'Grains', unit: 'kg',
-  currentStock: '', minStock: '', maxStock: '', unitCost: '',
-  location: '', expiryDate: '', supplier: '',
-};
-
 
 /* ── Inline Sparkline ─────────────────────────────────── */
 const Sparkline = ({ data, unit, color = '#4F46E5' }) => {
@@ -62,8 +56,8 @@ const Sparkline = ({ data, unit, color = '#4F46E5' }) => {
   );
 };
 
-/* ── Item Detail Drawer ───────────────────────────────── */
-const ItemDrawer = ({ item, onClose, onEdit }) => {
+/* ── Item Detail Drawer (read-only) ───────────────────── */
+const ItemDrawer = ({ item, onClose }) => {
   const [tab, setTab] = useState('overview');
   if (!item) return null;
 
@@ -71,7 +65,6 @@ const ItemDrawer = ({ item, onClose, onEdit }) => {
   const daysRemaining = item.dailyUsage > 0 ? Math.floor(item.currentStock / item.dailyUsage) : 999;
   const daysToExpiry  = getDaysUntilExpiry(item.expiryDate);
   const stockPct      = getStockPercent(item.currentStock, item.maxStock);
-  const barClass      = getStockBarClass(stockPct);
   const urgConf       = URGENCY_CONFIG[item.urgency] || URGENCY_CONFIG.low;
   const { label: stockLabel, type: stockType } = getStockStatus(item.currentStock, item.minStock, item.maxStock);
 
@@ -200,21 +193,6 @@ const ItemDrawer = ({ item, onClose, onEdit }) => {
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>Expiry Date: {formatDate(item.expiryDate)}</div>
                   </div>
-                </div>
-              </div>
-
-              <div className="drawer-section">
-                <div className="drawer-section-title">Quick Actions</div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className="btn-primary-fsp" style={{ fontSize: 12.5, padding: '8px 14px' }} onClick={() => onEdit(item)}>
-                    <MdEdit /> Edit Item
-                  </button>
-                  <button className="btn-secondary-fsp" style={{ fontSize: 12.5, padding: '8px 14px' }}>
-                    <MdShoppingCart /> Create PO
-                  </button>
-                  <button className="btn-secondary-fsp" style={{ fontSize: 12.5, padding: '8px 14px' }}>
-                    <MdTrendingDown /> Log Wastage
-                  </button>
                 </div>
               </div>
             </>
@@ -372,11 +350,10 @@ const ItemDrawer = ({ item, onClose, onEdit }) => {
 
 
 /* ══════════════════════════════════════════════════════
-   ADD ITEMS PAGE
+   ADD ITEMS PAGE  —  read-only catalog view
    ══════════════════════════════════════════════════════ */
 const AddItems = () => {
-  const { stockMap, adjustStock } = useInventoryStock();
-  const { user: currentUser } = useAuth();
+  const { stockMap } = useInventoryStock();
 
   const [baseItems, setBaseItems] = useState([]);
 
@@ -386,29 +363,79 @@ const AddItems = () => {
       currentStock: stockMap[item.id] ?? item.currentStock,
     })),
   [baseItems, stockMap]);
-  const [search, setSearch]             = useState('');
-  const [catFilter, setCatFilter]       = useState('All Categories');
-  const [statusFilter, setStatus]       = useState('All');
-  const [selectedItem, setSelected]     = useState(null);
-  const [showModal, setShowModal]       = useState(false);
-  const [editItem, setEditItem]         = useState(null);
-  const [form, setForm]                 = useState(INITIAL_FORM);
-  const [deleteId, setDeleteId]         = useState(null);
 
-  const [showStockModal, setShowStockModal] = useState(false);
-  const [stockSuccess, setStockSuccess]     = useState(false);
-  const [stockChecked, setStockChecked]     = useState({});
-  const [stockQtys, setStockQtys]           = useState({});
-  const [stockPrices, setStockPrices]       = useState({});
-  const [stockDescs, setStockDescs]         = useState({});
-  const [stockSearch, setStockSearch]       = useState('');
-  const [stockClock, setStockClock]         = useState(() => new Date().toLocaleTimeString());
-  const [expandedIds, setExpandedIds]       = useState(new Set());
-  const [stockPreCheckId, setStockPreCheckId] = useState(null);
-  const [transactions, setTransactions]           = useState([]);
-  const [editHistoryRecord, setEditHistoryRecord] = useState(null); // { itemId, recordId }
-  const [editHistoryForm, setEditHistoryForm]     = useState({ qty: '', rate: '', desc: '' });
-  const [deleteHistoryRecord, setDeleteHistoryRecord] = useState(null); // { itemId, recordId, qty }
+  const [search, setSearch]         = useState('');
+  const [catFilter, setCatFilter]   = useState('All Categories');
+  const [statusFilter, setStatus]   = useState('All');
+  const [selectedItem, setSelected] = useState(null);
+  const [expandedIds, setExpandedIds] = useState(new Set());
+  const [modalOpen, setModalOpen]   = useState(false);
+  const [modalMode, setModalMode]   = useState('add');
+  const [modalItem, setModalItem]   = useState(null);
+
+  const openAdd  = ()     => { setModalMode('add');  setModalItem(null); setModalOpen(true); };
+  const openEdit = (item) => { setModalMode('edit'); setModalItem(item); setModalOpen(true); };
+  const closeModal = ()   => setModalOpen(false);
+
+  const handleSave = async (payload) => {
+    if (modalMode === 'add') {
+      const body = { currentStock: 0, minStock: 0, maxStock: 0, unitCost: 0, location: '', expiryDate: '', ...payload };
+      const created = await api.post('/inventory', body);
+      setBaseItems((prev) => [...prev, created]);
+    } else {
+      const updated = await api.put(`/inventory/${payload.id}`, payload);
+      setBaseItems((prev) => prev.map((i) => i.id === updated.id ? { ...i, ...updated } : i));
+    }
+    closeModal();
+  };
+
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { title, message, onConfirm }
+
+  const handleDelete = (item) => {
+    setDeleteConfirm({
+      title:   'Delete Item',
+      message: `"${item.name}" will be permanently removed from inventory.`,
+      onConfirm: async () => {
+        await api.delete(`/inventory/${item.id}`);
+        setBaseItems((prev) => prev.filter((i) => i.id !== item.id));
+      },
+    });
+  };
+
+  const [stockItem,       setStockItem]       = useState(null);
+  const [stockEditRecord, setStockEditRecord] = useState(null); // { record, item }
+
+  /* replaces the matching item in baseItems with the full updated item returned by the server */
+  const syncItem = (updated) =>
+    setBaseItems((prev) => prev.map((i) => i.id === updated.id ? { ...i, ...updated } : i));
+
+  const handleAddStock = async ({ qty, rate, timestamp, supplier, date, time }) => {
+    const updated = await api.post(`/inventory/${stockItem.id}/stock-records`, {
+      qty, rate, supplier, timestamp, date, time,
+    });
+    syncItem(updated);
+    setStockItem(null);
+  };
+
+  const handleEditStockRecord = async ({ qty, rate, timestamp, supplier, date, time }) => {
+    const { record, item } = stockEditRecord;
+    const updated = await api.put(`/inventory/${item.id}/stock-records/${record.id}`, {
+      qty, rate, supplier, timestamp, date, time,
+    });
+    syncItem(updated);
+    setStockEditRecord(null);
+  };
+
+  const handleDeleteStockRecord = (rec, rowItem) => {
+    setDeleteConfirm({
+      title:   'Delete Stock Record',
+      message: `Remove the entry of +${rec.qty} ${rowItem.unit} received on ${rec.date}${rec.supplier ? ` from ${rec.supplier}` : ''}? The stock count will be reduced by ${rec.qty} ${rowItem.unit}.`,
+      onConfirm: async () => {
+        const updated = await api.delete(`/inventory/${rowItem.id}/stock-records/${rec.id}`);
+        syncItem(updated);
+      },
+    });
+  };
 
   useEffect(() => {
     const enrichedMap = Object.fromEntries(getEnrichedItems().map((e) => [e.id, e]));
@@ -418,25 +445,7 @@ const AddItems = () => {
         ...item,
       }))))
       .catch(console.error);
-    api.get('/stock-history')
-      .then((map) => {
-        const flat = Object.values(map).flat().map((r) => ({
-          id: r.id, date: r.timestamp ? r.timestamp.split('T')[0] : '', itemId: r.itemId,
-          item: r.itemName || '', category: r.category || '', type: r.type || 'IN',
-          qty: r.qty, unit: r.unit, unitCost: r.rate,
-          totalCost: +(r.qty * r.rate).toFixed(2),
-          supplier: r.supplier || '', loggedBy: r.loggedBy || '', notes: r.desc || '',
-        }));
-        setTransactions(flat);
-      })
-      .catch(console.error);
   }, []);
-
-  useEffect(() => {
-    if (!showStockModal) return;
-    const timer = setInterval(() => setStockClock(new Date().toLocaleTimeString()), 1000);
-    return () => clearInterval(timer);
-  }, [showStockModal]);
 
   const toggleExpand = useCallback((id) => {
     setExpandedIds((prev) => {
@@ -466,260 +475,16 @@ const AddItems = () => {
     return { total: liveItems.length, inStock, low, out, critical };
   }, [liveItems]);
 
-  const openAdd    = useCallback(() => { setEditItem(null); setForm(INITIAL_FORM); setShowModal(true); }, []);
-  const openEdit   = useCallback((item) => { setEditItem(item); setForm({ ...item }); setShowModal(true); }, []);
-  const closeModal = useCallback(() => { setShowModal(false); setEditItem(null); }, []);
-
-  const handleSave = async () => {
-    try {
-      if (editItem) {
-        const oldStock = stockMap[editItem.id] ?? editItem.currentStock;
-        const newStock = Number(form.currentStock);
-        const delta    = newStock - oldStock;
-        await api.put(`/inventory/${editItem.id}`, form);
-        setBaseItems((prev) => prev.map((i) => i.id === editItem.id ? { ...i, ...form } : i));
-        if (delta !== 0) adjustStock(editItem.id, delta);
-      } else {
-        const newId = `INV-${String(baseItems.length + 1).padStart(3, '0')}`;
-        const payload = { id: newId, ...form };
-        await api.post('/inventory', payload);
-        setBaseItems((prev) => [...prev, { ...payload, urgency: 'low', history: [0,0,0,0,0,0,0], dailyUsage: 0, weeklyUsage: 0, monthlyUsage: 0, totalConsumed: 0, stockLeftPct: 100, consumedPct: 0, totalValue: 0, daysRemaining: 999, peakDay: 'N/A', lastRestocked: 'N/A', restockQty: 0 }]);
-      }
-    } catch (err) { console.error('Save failed:', err); }
-    closeModal();
-    setSelected(null);
-  };
-
-  const handleDelete = async (id) => {
-    try {
-      await api.delete(`/inventory/${id}`);
-      setBaseItems((prev) => prev.filter((i) => i.id !== id));
-    } catch (err) { console.error('Delete failed:', err); }
-    setDeleteId(null);
-    if (selectedItem?.id === id) setSelected(null);
-  };
-
-  const openStockModal = useCallback((preCheckId) => {
-    setStockPreCheckId(preCheckId || null);
-    if (preCheckId) {
-      const found = liveItems.find((i) => i.id === preCheckId);
-      if (found) {
-        setStockChecked({ [preCheckId]: true });
-        setStockPrices({ [preCheckId]: String(found.unitCost) });
-      }
-    }
-    setShowStockModal(true);
-  }, [liveItems]);
-
-  const handleStockSave = async () => {
-    const toSave = liveItems.filter((item) => stockChecked[item.id] && Number(stockQtys[item.id] || 0) > 0);
-    if (toSave.length === 0) return;
-    const today = new Date().toISOString().split('T')[0];
-    const newTxns = [];
-    for (const item of toSave) {
-      const qty  = Number(stockQtys[item.id]);
-      const rate = Number(stockPrices[item.id] || item.unitCost);
-      setBaseItems((prev) => prev.map((i) => {
-        if (i.id !== item.id) return i;
-        const newStock   = (stockMap[i.id] ?? i.currentStock) + qty;
-        const newDays    = i.dailyUsage > 0 ? Math.floor(newStock / i.dailyUsage) : 999;
-        const newUrgency = newDays <= 3 ? 'critical' : newDays <= 7 ? 'high' : newDays <= 14 ? 'medium' : 'low';
-        return { ...i, unitCost: rate, urgency: newUrgency, daysRemaining: newDays };
-      }));
-      adjustStock(item.id, qty);
-      if (selectedItem?.id === item.id)
-        setSelected((prev) => ({ ...prev, currentStock: (stockMap[prev.id] ?? prev.currentStock) + qty, unitCost: rate }));
-      try {
-        const saved = await api.post(`/stock-history/${item.id}`, {
-          timestamp: new Date().toISOString(), qty, rate, unit: item.unit,
-          desc: stockDescs[item.id] || '', type: 'IN',
-          itemName: item.name, category: item.category,
-          supplier: item.supplier || '', loggedBy: currentUser?.username || 'Admin',
-        });
-        newTxns.push({ id: saved.id, date: today, itemId: item.id, item: item.name, category: item.category, type: 'IN', qty, unit: item.unit, unitCost: rate, totalCost: +(qty * rate).toFixed(2), supplier: item.supplier || '', loggedBy: currentUser?.username || 'Admin', notes: stockDescs[item.id] || '' });
-      } catch {
-        newTxns.push({ id: `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, date: today, itemId: item.id, item: item.name, category: item.category, type: 'IN', qty, unit: item.unit, unitCost: rate, totalCost: +(qty * rate).toFixed(2), supplier: item.supplier || '', loggedBy: currentUser?.username || 'Admin', notes: stockDescs[item.id] || '' });
-      }
-    }
-    setTransactions((prev) => [...newTxns, ...prev]);
-    setExpandedIds((prev) => { const n = new Set(prev); toSave.forEach((i) => n.add(i.id)); return n; });
-    setStockSuccess(true);
-    setTimeout(() => {
-      setShowStockModal(false);
-      setStockSuccess(false);
-      setStockChecked({});
-      setStockQtys({});
-      setStockPrices({});
-      setStockDescs({});
-      setStockSearch('');
-    }, 1400);
-  };
-
-  const closeStockModal = () => {
-    setShowStockModal(false);
-    setStockSuccess(false);
-    setStockPreCheckId(null);
-    setStockChecked({});
-    setStockQtys({});
-    setStockPrices({});
-    setStockDescs({});
-    setStockSearch('');
-  };
-
-  const openHistoryEdit = useCallback((itemId, recordId, rec) => {
-    setEditHistoryRecord({ itemId, recordId });
-    setEditHistoryForm({ qty: String(rec.qty), rate: String(rec.unitCost), desc: rec.notes || '' });
-  }, []);
-
-  const handleHistoryEditSave = async () => {
-    const { itemId, recordId } = editHistoryRecord;
-    const oldRecord = transactions.find((t) => t.id === recordId);
-    if (!oldRecord) { setEditHistoryRecord(null); return; }
-
-    const oldQty  = Number(oldRecord.qty);
-    const newQty  = Number(editHistoryForm.qty);
-    const newRate = Number(editHistoryForm.rate);
-    const delta   = newQty - oldQty;
-
-    try {
-      await api.put(`/stock-history/${itemId}/${recordId}`, { qty: newQty, rate: newRate, desc: editHistoryForm.desc });
-    } catch (err) { console.error('History edit failed:', err); }
-    setTransactions((prev) => prev.map((t) =>
-      t.id === recordId
-        ? { ...t, qty: newQty, unitCost: newRate, totalCost: +(newQty * newRate).toFixed(2), notes: editHistoryForm.desc }
-        : t
-    ));
-    if (delta !== 0) adjustStock(itemId, delta);
-    setEditHistoryRecord(null);
-  };
-
-  const handleHistoryDelete = useCallback(async (itemId, recordId, qty) => {
-    try {
-      await api.delete(`/stock-history/${itemId}/${recordId}`);
-    } catch (err) { console.error('History delete failed:', err); }
-    setTransactions((prev) => prev.filter((t) => t.id !== recordId));
-    adjustStock(itemId, -Number(qty));
-    setDeleteHistoryRecord(null);
-  }, [adjustStock]);
-
-  const filteredStockItems = useMemo(() => {
-    const q = stockSearch.toLowerCase();
-    return !q ? liveItems : liveItems.filter(
-      (i) => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q) || i.id.toLowerCase().includes(q)
-    );
-  }, [liveItems, stockSearch]);
-
-  const stockSelectedCount = Object.values(stockChecked).filter(Boolean).length;
-
-  const columns = [
-    {
-      key: 'name', label: 'Item Name',
-      render: (v, row) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--primary-pale)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
-            {v.charAt(0)}
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 13.5 }}>{v}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{row.id} · {row.location}</div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'category', label: 'Category',
-      render: (v) => (
-        <span style={{ padding: '2px 9px', borderRadius: 20, fontSize: 11.5, background: 'var(--bg-main)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontWeight: 600 }}>{v}</span>
-      ),
-    },
-    {
-      key: 'currentStock', label: 'Stock Level',
-      render: (v, row) => {
-        const pct = getStockPercent(v, row.maxStock);
-        return (
-          <div>
-            <strong style={{ fontSize: 13.5 }}>{v} {row.unit}</strong>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'dailyUsage', label: 'Daily Usage',
-      render: (v, row) => (
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--primary)' }}>{v} {row.unit}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>per day</div>
-        </div>
-      ),
-    },
-    {
-      key: 'daysRemaining', label: 'Days Left',
-      render: (v, row) => {
-        const color = v <= 3 ? 'var(--danger)' : v <= 7 ? 'var(--warning)' : v <= 14 ? 'var(--info)' : 'var(--success)';
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color }}>{row.currentStock === 0 ? '—' : v >= 999 ? '∞' : `${v}d`}</span>
-            <Sparkline data={row.history || []} unit={row.unit} color={v <= 7 ? '#EF4444' : '#4F46E5'} />
-          </div>
-        );
-      },
-    },
-    {
-      key: 'urgency', label: 'Urgency',
-      render: (v) => {
-        const conf = URGENCY_CONFIG[v] || URGENCY_CONFIG.low;
-        return (
-          <span style={{ padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: conf.bg, color: conf.color, border: `1px solid ${conf.border}`, whiteSpace: 'nowrap' }}>
-            {conf.icon} {v.charAt(0).toUpperCase() + v.slice(1)}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'expiryDate', label: 'Expiry',
-      render: (v) => {
-        const d = getDaysUntilExpiry(v);
-        return (
-          <div>
-            <div style={{ fontSize: 12.5 }}>{formatDate(v)}</div>
-            <div style={{ fontSize: 11, color: d <= 3 ? 'var(--danger)' : d <= 10 ? 'var(--warning)' : 'var(--text-muted)' }}>
-              {d < 0 ? 'Expired' : d === 0 ? 'Today!' : `${d}d`}
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'status', label: 'Status',
-      render: (_, row) => {
-        const { label, type } = getStockStatus(row.currentStock, row.minStock, row.maxStock);
-        return <StatusBadge label={label} type={type} />;
-      },
-    },
-    {
-      key: 'actions', label: '',
-      render: (_, row) => (
-        <div style={{ display: 'flex', gap: 5 }}>
-          <button className="btn-icon-sm" onClick={(e) => { e.stopPropagation(); openEdit(row); }} title="Edit"><MdEdit /></button>
-          <button className="btn-icon-sm danger" onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} title="Delete"><MdDelete /></button>
-        </div>
-      ),
-    },
-  ];
-
   return (
     <div>
       {/* Page Header */}
       <div className="page-header">
         <div className="page-header-left">
-          <h1>Add Items</h1>
-          <p>Manage your full food item catalog — add, edit, update stock, and track individual items</p>
+          <h1>Items</h1>
+          <p>View your full food item catalog and track individual stock levels</p>
         </div>
         <div className="page-header-actions">
           <button className="btn-secondary-fsp"><MdFileDownload /> Export CSV</button>
-          <button className="btn-stock-update" onClick={() => openStockModal(null)} title="Record stock received from supplier">
-            <MdSystemUpdateAlt /> Update Stock
-          </button>
           <button className="btn-primary-fsp" onClick={openAdd}><MdAdd /> Add Item</button>
         </div>
       </div>
@@ -775,13 +540,11 @@ const AddItems = () => {
           <div style={{ padding: '8px 16px 16px' }}>
             {filteredItems.map((row) => {
               const isOpen = expandedIds.has(row.id);
-              const pct    = getStockPercent(row.currentStock, row.maxStock);
-              const barCls = getStockBarClass(pct);
               const { label: stockLabel, type: stockType } = getStockStatus(row.currentStock, row.minStock, row.maxStock);
-              const conf   = URGENCY_CONFIG[row.urgency] || URGENCY_CONFIG.low;
-              const rowHistory = transactions.filter((t) => t.itemId === row.id && t.type === 'IN')
-                .sort((a, b) => new Date(b.date) - new Date(a.date));
-              const lastUp    = rowHistory[0]?.date;
+              const conf       = URGENCY_CONFIG[row.urgency] || URGENCY_CONFIG.low;
+              const rowHistory = [...(row.stockRecords || [])]
+                .sort((a, b) => new Date(b.timestamp || b.date) - new Date(a.timestamp || a.date));
+              const lastUp = rowHistory[0]?.date;
 
               return (
                 <div
@@ -831,10 +594,49 @@ const AddItems = () => {
                       </div>
                     </div>
 
-                    {/* Inline actions */}
+                    {/* Row actions */}
                     <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                      <button className="btn-icon-sm" onClick={() => openEdit(row)} title="Edit"><MdEdit /></button>
-                      <button className="btn-icon-sm danger" onClick={() => setDeleteId(row.id)} title="Delete"><MdDelete /></button>
+                      <button
+                        className="btn-icon-sm"
+                        onClick={() => setSelected(row)}
+                        title="View details"
+                        style={{ color: 'var(--primary)' }}
+                      >
+                        <MdInfo />
+                      </button>
+                      <button
+                        className="btn-icon-sm"
+                        onClick={() => openEdit(row)}
+                        title="Edit item"
+                        style={{ color: 'var(--warning)' }}
+                      >
+                        <MdEdit />
+                      </button>
+                      <button
+                        className="btn-icon-sm danger"
+                        onClick={() => handleDelete(row)}
+                        title="Delete item"
+                      >
+                        <MdDelete />
+                      </button>
+                      <button
+                        onClick={() => setStockItem(row)}
+                        title="Add stock"
+                        style={{
+                          height: 30, padding: '0 11px', borderRadius: 7,
+                          border: '1.5px solid rgba(16,185,129,0.35)',
+                          background: 'var(--success-bg, #ECFDF5)',
+                          color: 'var(--success, #10B981)',
+                          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          transition: 'background 0.18s, border-color 0.18s',
+                          whiteSpace: 'nowrap',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#D1FAE5'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.6)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--success-bg, #ECFDF5)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.35)'; }}
+                      >
+                        <MdAdd style={{ fontSize: 14 }} /> Add Stock
+                      </button>
                     </div>
 
                     {/* Chevron */}
@@ -846,26 +648,10 @@ const AddItems = () => {
                   {/* ── Expanded body ── */}
                   {isOpen && (
                     <div style={{ borderTop: '1px solid var(--border-light)', padding: '14px 18px', background: '#F8FAFF' }}>
-                      {/* Urgency + action row */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                        <span style={{ padding: '4px 11px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: conf.bg, color: conf.color, border: `1px solid ${conf.border}` }}>
-                          {conf.icon} {row.urgency.charAt(0).toUpperCase() + row.urgency.slice(1)} — {conf.label}
-                        </span>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {/* <button className="btn-secondary-fsp" style={{ fontSize: 12, padding: '7px 12px' }} onClick={() => setSelected(row)}>
-                            <MdInfo /> View Details
-                          </button> */}
-                          <button className="btn-stock-update" style={{ fontSize: 12, padding: '7px 12px' }} onClick={() => openStockModal(row.id)}>
-                            <MdSystemUpdateAlt /> Update Stock
-                          </button>
-                          {/* <button className="btn-primary-fsp" style={{ fontSize: 12, padding: '7px 12px' }} onClick={() => openEdit(row)}>
-                            <MdEdit /> Edit
-                          </button> */}
-                          {/* <button className="btn-danger-fsp" style={{ fontSize: 12, padding: '7px 12px' }} onClick={() => setDeleteId(row.id)}>
-                            <MdDelete /> Delete
-                          </button> */}
-                        </div>
-                      </div>
+                      {/* Urgency banner */}
+                      <span style={{ padding: '4px 11px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: conf.bg, color: conf.color, border: `1px solid ${conf.border}` }}>
+                        {conf.icon} {row.urgency.charAt(0).toUpperCase() + row.urgency.slice(1)} — {conf.label}
+                      </span>
 
                       {/* Stock update history */}
                       {rowHistory.length > 0 && (
@@ -878,18 +664,41 @@ const AddItems = () => {
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             {rowHistory.map((rec, i) => (
-                              <div key={rec.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px', background: '#fff', borderRadius: 8, border: '1px solid var(--border-light)', fontSize: 12.5 }}>
+                              <div key={rec.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: '#fff', borderRadius: 8, border: '1px solid var(--border-light)', fontSize: 12.5 }}>
+                                {/* Index badge */}
                                 <span style={{ width: 20, height: 20, borderRadius: 6, background: 'var(--primary-pale)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>{rowHistory.length - i}</span>
-                                <span style={{ color: 'var(--text-secondary)' }}>📅 {rec.date}</span>
-                                {rec.supplier && <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, padding: '1px 7px', background: 'var(--primary-pale)', borderRadius: 20 }}>{rec.supplier}</span>}
-                                <span style={{ fontWeight: 700, color: 'var(--success)' }}>+{rec.qty} {rec.unit}</span>
-                                <span style={{ color: 'var(--text-muted)' }}>@ ₹{rec.unitCost}/{rec.unit}</span>
-                                <span style={{ fontWeight: 700, color: 'var(--primary)' }}>₹{rec.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                {/* Date + Time */}
+                                <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>📅 {rec.date}{rec.time ? ` · ${rec.time}` : ''}</span>
+                                {/* Supplier */}
+                                {rec.supplier && <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, padding: '1px 7px', background: 'var(--primary-pale)', borderRadius: 20, whiteSpace: 'nowrap' }}>{rec.supplier}</span>}
+                                {/* Qty */}
+                                <span style={{ fontWeight: 700, color: 'var(--success)', whiteSpace: 'nowrap' }}>+{rec.qty} {row.unit}</span>
+                                {/* Rate */}
+                                <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>@ ₹{rec.rate}/{row.unit}</span>
+                                {/* Total */}
+                                <span style={{ fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>₹{(rec.qty * rec.rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 {rec.loggedBy && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>by {rec.loggedBy}</span>}
                                 {rec.notes && <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.notes}</span>}
-                                <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                                  <button className="btn-icon-sm" onClick={() => openHistoryEdit(row.id, rec.id, rec)} title="Edit record"><MdEdit /></button>
-                                  <button className="btn-icon-sm danger" onClick={() => setDeleteHistoryRecord({ itemId: row.id, recordId: rec.id, qty: rec.qty })} title="Delete record"><MdDelete /></button>
+                                {/* Spacer */}
+                                <div style={{ flex: 1 }} />
+                                {/* Record actions */}
+                                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                  <button
+                                    className="btn-icon-sm"
+                                    title="Edit record"
+                                    onClick={() => setStockEditRecord({ record: rec, item: row })}
+                                    style={{ width: 26, height: 26, fontSize: 13, color: 'var(--warning)' }}
+                                  >
+                                    <MdEdit />
+                                  </button>
+                                  <button
+                                    className="btn-icon-sm danger"
+                                    title="Delete record"
+                                    onClick={() => handleDeleteStockRecord(rec, row)}
+                                    style={{ width: 26, height: 26, fontSize: 13 }}
+                                  >
+                                    <MdDelete />
+                                  </button>
                                 </div>
                               </div>
                             ))}
@@ -907,303 +716,53 @@ const AddItems = () => {
         {/* Footer */}
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)', fontSize: 12.5, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Showing {filteredItems.length} of {baseItems.length} items</span>
-          <span style={{ color: 'var(--primary)', fontWeight: 600, fontSize: 12 }}>💡 Expand any item to see full details and update stock</span>
+          <span style={{ color: 'var(--primary)', fontWeight: 600, fontSize: 12 }}>💡 Expand any item to see stock history · Click ℹ️ for full details</span>
         </div>
       </div>
 
       {/* Item Detail Drawer */}
       {selectedItem && (
-        <ItemDrawer item={selectedItem} onClose={() => setSelected(null)} onEdit={(item) => { setSelected(null); openEdit(item); }} />
+        <ItemDrawer item={selectedItem} onClose={() => setSelected(null)} />
       )}
 
       {/* Add / Edit Modal */}
-      <Modal show={showModal} onClose={closeModal} title={editItem ? `Edit — ${editItem.name}` : 'Add New Item'} size="lg"
-        footer={<><button className="btn-secondary-fsp" onClick={closeModal}>Cancel</button><button className="btn-primary-fsp" onClick={handleSave}>{editItem ? 'Save Changes' : 'Add Item'}</button></>}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label className="fsp-label">Item Name *</label>
-            <input className="fsp-input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Basmati Rice" />
-          </div>
-          <div>
-            <label className="fsp-label">Category</label>
-            <select className="fsp-select" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
-              {categories.filter((c) => c !== 'All Categories').map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="fsp-label">Unit</label>
-            <select className="fsp-select" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}>
-              {['kg', 'g', 'L', 'mL', 'doz', 'pcs', 'ctn', 'bag', 'box'].map((u) => <option key={u}>{u}</option>)}
-            </select>
-          </div>
-          <div><label className="fsp-label">Current Stock</label><input className="fsp-input" type="number" value={form.currentStock} onChange={(e) => setForm((f) => ({ ...f, currentStock: Number(e.target.value) }))} /></div>
-          <div><label className="fsp-label">Min Stock (Reorder Point)</label><input className="fsp-input" type="number" value={form.minStock} onChange={(e) => setForm((f) => ({ ...f, minStock: Number(e.target.value) }))} /></div>
-          <div><label className="fsp-label">Max Stock Capacity</label><input className="fsp-input" type="number" value={form.maxStock} onChange={(e) => setForm((f) => ({ ...f, maxStock: Number(e.target.value) }))} /></div>
-          <div><label className="fsp-label">Unit Cost (₹)</label><input className="fsp-input" type="number" step="0.01" value={form.unitCost} onChange={(e) => setForm((f) => ({ ...f, unitCost: Number(e.target.value) }))} /></div>
-          <div><label className="fsp-label">Expiry Date</label><input className="fsp-input" type="date" value={form.expiryDate} onChange={(e) => setForm((f) => ({ ...f, expiryDate: e.target.value }))} /></div>
-          <div><label className="fsp-label">Storage Location</label><input className="fsp-input" value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} /></div>
-          <div style={{ gridColumn: 'span 2' }}><label className="fsp-label">Supplier</label><input className="fsp-input" value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} /></div>
-        </div>
-      </Modal>
+      {modalOpen && (
+        <AddItemModal
+          mode={modalMode}
+          item={modalItem}
+          onSave={handleSave}
+          onClose={closeModal}
+        />
+      )}
 
-      {/* Delete Confirm */}
-      <Modal show={!!deleteId} onClose={() => setDeleteId(null)} title="Confirm Delete" size="sm"
-        footer={<><button className="btn-secondary-fsp" onClick={() => setDeleteId(null)}>Cancel</button><button className="btn-danger-fsp" onClick={() => handleDelete(deleteId)}>Delete Item</button></>}>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 14, margin: 0 }}>Are you sure you want to delete this inventory item? This action cannot be undone.</p>
-      </Modal>
+      {/* Add Stock Modal */}
+      {stockItem && (
+        <AddStockModal
+          item={stockItem}
+          onSave={handleAddStock}
+          onClose={() => setStockItem(null)}
+        />
+      )}
 
-      {/* Update Stock Modal */}
-      {(() => {
-        const singleItem   = stockPreCheckId ? liveItems.find((i) => i.id === stockPreCheckId) : null;
-        const singleQty    = Number(stockQtys[stockPreCheckId]    || 0);
-        const singlePrice  = stockPrices[stockPreCheckId] ?? '';
-        const canSubmit    = stockPreCheckId
-          ? singleQty > 0 && singlePrice !== ''
-          : stockSelectedCount > 0;
-        return (
-      <Modal
-        show={showStockModal}
-        onClose={closeStockModal}
-        title={stockPreCheckId && singleItem ? `Update Stock — ${singleItem.name}` : 'Update Stock — Record Received Goods'}
-        size={stockPreCheckId ? 'lg' : 'xl'}
-        footer={stockSuccess ? null : (
-          <>
-            {!stockPreCheckId && (
-              <span style={{ fontSize: 13, color: 'var(--text-muted)', marginRight: 'auto' }}>
-                {stockSelectedCount > 0
-                  ? <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{stockSelectedCount} item{stockSelectedCount !== 1 ? 's' : ''} selected</span>
-                  : 'Check items below to select them'}
-              </span>
-            )}
-            <button className="btn-secondary-fsp" onClick={closeStockModal}>Cancel</button>
-            <button
-              className="btn-stock-update"
-              onClick={handleStockSave}
-              disabled={!canSubmit}
-              style={{ opacity: !canSubmit ? 0.5 : 1 }}
-            >
-              <MdSystemUpdateAlt /> {stockPreCheckId ? 'Confirm Update' : 'Submit Stock Received'}
-            </button>
-          </>
-        )}
-      >
-        {stockSuccess ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 20px', gap: 14, textAlign: 'center' }}>
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <MdCheckCircle style={{ color: 'var(--success)', fontSize: 38 }} />
-            </div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-primary)' }}>Stock Updated!</div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              {singleItem ? `+${singleQty} ${singleItem.unit} added to ${singleItem.name}` : `${stockSelectedCount} item${stockSelectedCount !== 1 ? 's' : ''} updated successfully.`}
-            </div>
-          </div>
-        ) : (
-          <div>
-            {/* Admin / Date / Time strip */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 18, padding: '14px 18px', background: 'var(--primary-pale)', borderRadius: 12, border: '1px solid rgba(79,70,229,0.15)' }}>
-              {[
-                { label: 'Admin Name', value: currentUser?.username || 'Unknown',  icon: <MdPerson style={{ color: 'var(--primary)' }} /> },
-                { label: 'Date',       value: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }), icon: <MdCalendarToday style={{ color: 'var(--primary)' }} /> },
-                { label: 'Time',       value: stockClock, live: true,              icon: <MdInfo style={{ color: 'var(--primary)' }} /> },
-              ].map(({ label, value, icon, live }) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 9, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, boxShadow: '0 1px 4px rgba(79,70,229,0.12)' }}>{icon}</div>
-                  <div>
-                    <div style={{ fontSize: 10.5, color: 'var(--primary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: live ? 'var(--primary)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* Edit Stock Record Modal */}
+      {stockEditRecord && (
+        <AddStockModal
+          item={stockEditRecord.item}
+          record={stockEditRecord.record}
+          onSave={handleEditStockRecord}
+          onClose={() => setStockEditRecord(null)}
+        />
+      )}
 
-            {/* ── SINGLE-ITEM MODE ── */}
-            {singleItem ? (
-              <div>
-                {/* Item info card (read-only) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', marginBottom: 20, background: '#fff', borderRadius: 12, border: '1.5px solid var(--primary)', position: 'relative' }}>
-                  <div style={{ width: 46, height: 46, borderRadius: 12, background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20, flexShrink: 0 }}>
-                    {singleItem.name.charAt(0)}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text-primary)' }}>{singleItem.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{singleItem.id} · {singleItem.category} · {singleItem.location}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>Current: {singleItem.currentStock} {singleItem.unit}</span>
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Max: {singleItem.maxStock} {singleItem.unit}</span>
-                    </div>
-                  </div>
-                  {singleQty > 0 && (
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>After Update</div>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--success)', lineHeight: 1.2 }}>{singleItem.currentStock + singleQty} {singleItem.unit}</div>
-                    </div>
-                  )}
-                  <span style={{ position: 'absolute', top: 10, right: 14, fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>read-only</span>
-                </div>
-
-                {/* Editable fields */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
-                  <div>
-                    <label className="fsp-label">Quantity Received * <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({singleItem.unit})</span></label>
-                    <input
-                      className="fsp-input" type="number" min="0" step="0.01" autoFocus
-                      value={stockQtys[singleItem.id] || ''}
-                      onChange={(e) => setStockQtys((prev) => ({ ...prev, [singleItem.id]: e.target.value }))}
-                      placeholder="e.g. 50"
-                    />
-                  </div>
-                  <div>
-                    <label className="fsp-label">Purchase Rate * <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(₹ per {singleItem.unit})</span></label>
-                    <input
-                      className="fsp-input" type="number" min="0" step="0.01"
-                      value={stockPrices[singleItem.id] ?? ''}
-                      onChange={(e) => setStockPrices((prev) => ({ ...prev, [singleItem.id]: e.target.value }))}
-                      placeholder={String(singleItem.unitCost)}
-                    />
-                  </div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <label className="fsp-label">Description / Notes</label>
-                    <input
-                      className="fsp-input"
-                      value={stockDescs[singleItem.id] || ''}
-                      onChange={(e) => setStockDescs((prev) => ({ ...prev, [singleItem.id]: e.target.value }))}
-                      placeholder="e.g. Received from supplier on delivery note #123"
-                    />
-                  </div>
-                </div>
-
-                {/* Total */}
-                {singleQty > 0 && singlePrice !== '' && (
-                  <div style={{ marginTop: 16, padding: '12px 18px', background: 'var(--success-bg)', borderRadius: 10, border: '1px solid rgba(16,185,129,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Total Purchase Amount</span>
-                    <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--success)' }}>
-                      ₹{(singleQty * Number(singlePrice)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* ── MULTI-ITEM CHECKLIST MODE ── */
-              <div>
-                <div className="filter-search" style={{ marginBottom: 12 }}>
-                  <MdSearch className="filter-search-icon" style={{ width: 15, height: 15 }} />
-                  <input type="text" placeholder="Search items by name, category or ID…" value={stockSearch} onChange={(e) => setStockSearch(e.target.value)} />
-                </div>
-                <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr 140px 110px 110px 180px', padding: '9px 14px', background: 'var(--bg-main)', borderBottom: '1px solid var(--border-color)', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                    <div /><div>Item</div><div style={{ textAlign: 'center' }}>Qty / Unit</div><div style={{ textAlign: 'center' }}>Price (₹)</div><div style={{ textAlign: 'right' }}>Total (₹)</div><div>Description</div>
-                  </div>
-                  <div style={{ maxHeight: 380, overflowY: 'auto' }}>
-                    {filteredStockItems.map((item, idx) => {
-                      const checked = !!stockChecked[item.id];
-                      const toggle  = () => {
-                        const next = !stockChecked[item.id];
-                        setStockChecked((prev) => ({ ...prev, [item.id]: next }));
-                        if (next && !stockPrices[item.id]) setStockPrices((prev) => ({ ...prev, [item.id]: String(item.unitCost) }));
-                      };
-                      const qty   = Number(stockQtys[item.id]   || 0);
-                      const price = Number(stockPrices[item.id] ?? item.unitCost);
-                      const total = qty && price ? qty * price : null;
-                      return (
-                        <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '36px 1fr 140px 110px 110px 180px', alignItems: 'center', padding: '10px 14px', borderBottom: idx < filteredStockItems.length - 1 ? '1px solid var(--border-light)' : 'none', background: checked ? 'var(--primary-pale)' : idx % 2 === 0 ? '#fff' : 'var(--bg-main)', transition: 'background 0.15s', cursor: 'pointer' }}>
-                          <div onClick={toggle} style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${checked ? 'var(--primary)' : 'var(--border-color)'}`, background: checked ? 'var(--primary)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
-                            {checked && <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-                          </div>
-                          <div onClick={toggle} style={{ paddingLeft: 10 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>{item.name}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{item.id} · {item.category} · <span style={{ color: (stockMap[item.id] ?? item.currentStock) <= item.minStock ? 'var(--danger)' : 'var(--success)', fontWeight: 600 }}>Avail: {stockMap[item.id] ?? item.currentStock} {item.unit}</span></div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                            <input type="number" min="0" step="0.01" value={stockQtys[item.id] || ''} onChange={(e) => { const val = e.target.value; setStockQtys((prev) => ({ ...prev, [item.id]: val })); if (val) { setStockChecked((prev) => ({ ...prev, [item.id]: true })); if (!stockPrices[item.id]) setStockPrices((prev) => ({ ...prev, [item.id]: String(item.unitCost) })); } }} onClick={(e) => e.stopPropagation()} placeholder="0" style={{ width: 70, height: 34, border: '1.5px solid var(--border-color)', borderRadius: 8, padding: '0 6px', fontSize: 13, fontWeight: 600, textAlign: 'center', outline: 'none', background: checked ? '#fff' : 'var(--bg-main)' }} />
-                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', padding: '2px 7px', background: 'var(--primary-pale)', borderRadius: 20, whiteSpace: 'nowrap' }}>{item.unit}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <input type="number" min="0" step="0.01" value={stockPrices[item.id] ?? ''} onChange={(e) => { setStockPrices((prev) => ({ ...prev, [item.id]: e.target.value })); if (e.target.value) setStockChecked((prev) => ({ ...prev, [item.id]: true })); }} onClick={(e) => e.stopPropagation()} placeholder={String(item.unitCost)} style={{ width: 90, height: 34, border: '1.5px solid var(--border-color)', borderRadius: 8, padding: '0 8px', fontSize: 13, fontWeight: 600, textAlign: 'center', outline: 'none', background: checked ? '#fff' : 'var(--bg-main)' }} />
-                          </div>
-                          <div style={{ textAlign: 'right', paddingRight: 6 }}>
-                            {total !== null ? <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--success)' }}>₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
-                          </div>
-                          <input type="text" value={stockDescs[item.id] || ''} onChange={(e) => { setStockDescs((prev) => ({ ...prev, [item.id]: e.target.value })); if (e.target.value) setStockChecked((prev) => ({ ...prev, [item.id]: true })); }} onClick={(e) => e.stopPropagation()} placeholder="Add note…" style={{ width: '100%', height: 34, border: '1.5px solid var(--border-color)', borderRadius: 8, padding: '0 10px', fontSize: 12, outline: 'none', background: checked ? '#fff' : 'var(--bg-main)' }} />
-                        </div>
-                      );
-                    })}
-                    {filteredStockItems.length === 0 && <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>No items match your search.</div>}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
-        );
-      })()}
-
-      {/* Edit History Record Modal */}
-      {editHistoryRecord && (() => {
-        const histItem = liveItems.find((i) => i.id === editHistoryRecord.itemId);
-        const rec      = transactions.find((t) => t.id === editHistoryRecord.recordId);
-        if (!histItem || !rec) return null;
-        const canSave  = editHistoryForm.qty !== '' && Number(editHistoryForm.qty) > 0 && editHistoryForm.rate !== '' && Number(editHistoryForm.rate) >= 0;
-        return (
-          <Modal
-            show={!!editHistoryRecord}
-            onClose={() => setEditHistoryRecord(null)}
-            title={`Edit Stock Record — ${histItem.name}`}
-            size="sm"
-            footer={
-              <>
-                <button className="btn-secondary-fsp" onClick={() => setEditHistoryRecord(null)}>Cancel</button>
-                <button className="btn-primary-fsp" onClick={handleHistoryEditSave} disabled={!canSave} style={{ opacity: !canSave ? 0.5 : 1 }}>
-                  <MdCheckCircle /> Save Changes
-                </button>
-              </>
-            }
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ padding: '10px 14px', background: 'var(--primary-pale)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)', border: '1px solid rgba(79,70,229,0.15)', display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{histItem.name}</span>
-                <span style={{ color: 'var(--text-muted)' }}>Date: {rec.date}</span>
-              </div>
-              <div>
-                <label className="fsp-label">Quantity Received * <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({histItem.unit})</span></label>
-                <input className="fsp-input" type="number" min="0" step="0.01" autoFocus value={editHistoryForm.qty} onChange={(e) => setEditHistoryForm((f) => ({ ...f, qty: e.target.value }))} />
-              </div>
-              <div>
-                <label className="fsp-label">Purchase Rate * <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(₹ per {histItem.unit})</span></label>
-                <input className="fsp-input" type="number" min="0" step="0.01" value={editHistoryForm.rate} onChange={(e) => setEditHistoryForm((f) => ({ ...f, rate: e.target.value }))} />
-              </div>
-              <div>
-                <label className="fsp-label">Description / Notes</label>
-                <input className="fsp-input" value={editHistoryForm.desc} onChange={(e) => setEditHistoryForm((f) => ({ ...f, desc: e.target.value }))} placeholder="Add note…" />
-              </div>
-              {editHistoryForm.qty && editHistoryForm.rate && (
-                <div style={{ padding: '10px 14px', background: 'var(--success-bg)', borderRadius: 8, border: '1px solid rgba(16,185,129,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>Total Purchase Amount</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--success)' }}>
-                    ₹{(Number(editHistoryForm.qty) * Number(editHistoryForm.rate)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              )}
-            </div>
-          </Modal>
-        );
-      })()}
-
-      {/* Delete History Record Confirm Modal */}
-      <Modal
-        show={!!deleteHistoryRecord}
-        onClose={() => setDeleteHistoryRecord(null)}
-        title="Delete Stock Record"
-        size="sm"
-        footer={
-          <>
-            <button className="btn-secondary-fsp" onClick={() => setDeleteHistoryRecord(null)}>Cancel</button>
-            <button className="btn-danger-fsp" onClick={() => handleHistoryDelete(deleteHistoryRecord.itemId, deleteHistoryRecord.recordId, deleteHistoryRecord.qty)}>Delete Record</button>
-          </>
-        }
-      >
-        <p style={{ color: 'var(--text-secondary)', fontSize: 14, margin: 0 }}>Are you sure you want to delete this stock update record? The quantity will be deducted from live stock.</p>
-      </Modal>
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <DeleteConfirmModal
+          title={deleteConfirm.title}
+          message={deleteConfirm.message}
+          onConfirm={deleteConfirm.onConfirm}
+          onClose={() => setDeleteConfirm(null)}
+        />
+      )}
     </div>
   );
 };

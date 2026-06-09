@@ -37,12 +37,13 @@ router.post('/:itemId', auth, async (req, res) => {
 // PUT /api/stock-history/:itemId/:recordId
 router.put('/:itemId/:recordId', auth, async (req, res) => {
   try {
+    const { _id, __v, ...update } = req.body;
     const doc = await SH.findOneAndUpdate(
       { itemId: req.params.itemId, id: req.params.recordId },
-      req.body, { new: true }
+      { $set: update }, { new: true }
     ).lean();
     if (!doc) return res.status(404).json({ error: 'Record not found' });
-    const { _id, __v, ...out } = doc;
+    const { _id: rid, __v: rv, ...out } = doc;
     res.json(out);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

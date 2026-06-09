@@ -1,7 +1,7 @@
 ﻿import './Login.css';
 import React, { useState } from 'react';
 import { MdVisibility, MdVisibilityOff, MdLock, MdPerson, MdRestaurant } from 'react-icons/md';
-import { authenticate, setCurrentUser } from '../data/loginDb';
+import { authenticate, setCurrentUser } from '../services/loginDb';
 
 const Login = ({ onLogin }) => {
   const [username, setUsername]   = useState('');

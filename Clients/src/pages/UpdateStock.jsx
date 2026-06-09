@@ -9,7 +9,7 @@ import {
   categories,
   getStockPercent, getStockBarClass,
   formatCurrency, formatDate,
-} from '../data/mockData';
+} from '../services/mockData';
 import api from '../services/api';
 import { useInventoryStock } from '../hooks/useInventoryStock';
 import { useAuth } from '../contexts/AuthContext';

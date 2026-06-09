@@ -9,7 +9,7 @@ import {
   getStockStatus, getStockBarClass,
   formatCurrency,
   getEnrichedItems,
-} from '../data/mockData';
+} from '../services/mockData';
 
 const URGENCY_CONFIG = {
   critical: { icon: '🔴', color: '#EF4444', bg: '#FEF2F2', border: 'rgba(239,68,68,0.2)'  },

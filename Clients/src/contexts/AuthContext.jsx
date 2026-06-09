@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback } from 'react';
-import { setCurrentUser, clearCurrentUser, getCurrentUser } from '../data/loginDb';
+import { setCurrentUser, clearCurrentUser, getCurrentUser } from '../services/loginDb';
 
 const AuthContext = createContext(null);
 

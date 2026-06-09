@@ -37,14 +37,14 @@ router.post('/:projectId', auth, async (req, res) => {
 // PUT /api/stock-received/:projectId/:submissionId
 router.put('/:projectId/:submissionId', auth, async (req, res) => {
   try {
-    const { id, ...rest } = req.body;
+    const { id, _id, __v, ...rest } = req.body;
     const doc = await SR.findOneAndUpdate(
       { projectId: req.params.projectId, submissionId: req.params.submissionId },
-      { submissionId: id || req.params.submissionId, ...rest },
+      { $set: { submissionId: id || req.params.submissionId, ...rest } },
       { new: true }
     ).lean();
     if (!doc) return res.status(404).json({ error: 'Submission not found' });
-    const { submissionId, _id, __v, ...out } = doc;
+    const { submissionId, _id: sid, __v: sv, ...out } = doc;
     res.json({ id: submissionId, ...out });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

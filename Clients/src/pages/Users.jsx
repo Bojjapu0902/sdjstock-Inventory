@@ -1,21 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import './Users.css';
 import {
-  MdAdd, MdEdit, MdDelete, MdPerson, MdAdminPanelSettings,
-  MdRefresh, MdVisibility, MdVisibilityOff,
+  MdPerson, MdAdminPanelSettings, MdRefresh,
 } from 'react-icons/md';
 import DataTable from '../components/common/DataTable';
-import Modal     from '../components/common/Modal';
-import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
-
-/* ── helpers ─────────────────────────────────────────── */
-const ROLES = ['Admin', 'User'];
-
-const INIT_FORM = {
-  name: '', username: '', password: '', role: 'User',
-  email: '', phone: '', projectId: '',
-};
 
 const RoleBadge = ({ role }) => {
   const isAdmin = role === 'Admin';
@@ -48,30 +37,18 @@ const Avatar = ({ name, role, size = 36 }) => {
   );
 };
 
-/* ── component ───────────────────────────────────────── */
 const Users = () => {
-  const { user: currentUser } = useAuth();
-
-  const [users, setUsers]       = useState([]);
-  const [search, setSearch]     = useState('');
-  const [roleFilter, setRole]   = useState('All');
-  const [showModal, setShowModal] = useState(false);
-  const [editItem, setEditItem] = useState(null);
-  const [form, setForm]         = useState(INIT_FORM);
-  const [formError, setFormError] = useState('');
-  const [deleteId, setDeleteId] = useState(null);
-  const [showPass, setShowPass] = useState(false);
-  const [viewItem, setViewItem] = useState(null);
+  const [users, setUsers]     = useState([]);
+  const [search, setSearch]   = useState('');
+  const [roleFilter, setRole] = useState('All');
 
   useEffect(() => {
     api.get('/users').then(setUsers).catch(console.error);
   }, []);
 
-  /* ── counts ────────────────────────────────────────── */
   const adminCount   = users.filter((u) => u.role === 'Admin').length;
   const projectCount = users.filter((u) => u.role === 'User').length;
 
-  /* ── filter ────────────────────────────────────────── */
   const filtered = useMemo(() => users.filter((u) => {
     const q = search.toLowerCase();
     const matchSearch = !q ||
@@ -82,56 +59,6 @@ const Users = () => {
     return matchSearch && matchRole;
   }), [users, search, roleFilter]);
 
-  /* ── modal ─────────────────────────────────────────── */
-  const openAdd = () => {
-    setEditItem(null); setForm(INIT_FORM); setFormError(''); setShowPass(false); setShowModal(true);
-  };
-  const openEdit = (u) => {
-    setEditItem(u);
-    setForm({ name: u.name || '', username: u.username, password: u.password,
-              role: u.role, email: u.email || '', phone: u.phone || '', projectId: u.projectId || '' });
-    setFormError(''); setShowPass(false); setShowModal(true);
-  };
-  const closeModal = () => { setShowModal(false); setEditItem(null); };
-  const handleField = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
-
-  /* ── save ──────────────────────────────────────────── */
-  const handleSave = async () => {
-    try {
-      if (editItem) {
-        if (!form.username.trim()) { setFormError('Username is required.'); return; }
-        const payload = {
-          name:      form.name.trim() || form.username.trim().toLowerCase(),
-          username:  form.username.trim().toLowerCase(),
-          role:      form.role,
-          email:     form.email.trim(),
-          phone:     form.phone.trim(),
-          projectId: form.role === 'Admin' ? null : (form.projectId.trim() || editItem.projectId || null),
-        };
-        if (form.password.trim()) payload.password = form.password.trim();
-        const updated = await api.put(`/users/${editItem.id}`, payload);
-        setUsers((prev) => prev.map((u) => u.id === editItem.id ? updated : u));
-      } else {
-        if (!form.username.trim() || !form.password.trim()) { setFormError('Username and password are required.'); return; }
-        const created = await api.post('/users', form);
-        setUsers((prev) => [...prev, created]);
-      }
-      closeModal();
-    } catch (err) { setFormError(err.message || 'Save failed'); }
-  };
-
-  /* ── delete ────────────────────────────────────────── */
-  const handleDelete = async () => {
-    try {
-      await api.delete(`/users/${deleteId}`);
-      setUsers((prev) => prev.filter((u) => u.id !== deleteId));
-    } catch (err) { console.error(err); }
-    setDeleteId(null);
-  };
-
-  const canDelete = (u) => u.id !== currentUser?.id && u.id !== 'USR-000';
-
-  /* ── columns ───────────────────────────────────────── */
   const columns = [
     { key: 'id', label: 'User ID', sortable: true, width: 110 },
     {
@@ -167,40 +94,22 @@ const Users = () => {
         : <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>,
     },
     { key: 'createdAt', label: 'Created', sortable: true },
-    {
-      key: 'actions', label: 'Actions',
-      render: (_, row) => (
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn-icon-sm" title="View"   onClick={() => setViewItem(row)}><MdVisibility /></button>
-          <button className="btn-icon-sm" title="Edit"   onClick={() => openEdit(row)}><MdEdit /></button>
-          {canDelete(row) && (
-            <button className="btn-icon-sm danger" title="Delete" onClick={() => setDeleteId(row.id)}><MdDelete /></button>
-          )}
-        </div>
-      ),
-    },
   ];
 
-  /* ── render ────────────────────────────────────────── */
   return (
     <div>
-      {/* Page Header */}
       <div className="page-header">
         <div className="page-header-left">
           <h1>User Management</h1>
-          <p>Manage admin and project user accounts</p>
+          <p>View admin and project user accounts</p>
         </div>
         <div className="page-header-actions">
           <button className="btn-secondary-fsp" onClick={() => api.get('/users').then(setUsers).catch(console.error)}>
             <MdRefresh /> Refresh
           </button>
-          <button className="btn-primary-fsp" onClick={openAdd}>
-            <MdAdd /> Add User
-          </button>
         </div>
       </div>
 
-      {/* KPI Strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
         {[
           { label: 'Total Users',   val: users.length, color: 'var(--primary)' },
@@ -214,7 +123,6 @@ const Users = () => {
         ))}
       </div>
 
-      {/* Table Card */}
       <div className="fsp-card">
         <div className="filter-toolbar">
           <div className="filter-search">
@@ -230,7 +138,7 @@ const Users = () => {
           </div>
           <select className="filter-select" value={roleFilter} onChange={(e) => setRole(e.target.value)}>
             <option value="All">All Roles</option>
-            {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            {['Admin', 'User'].map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <button className="btn-icon-sm" title="Reset" onClick={() => { setSearch(''); setRole('All'); }}>
             <MdRefresh />
@@ -240,146 +148,6 @@ const Users = () => {
 
         <DataTable columns={columns} data={filtered} pageSize={10} emptyMessage="No users found." />
       </div>
-
-      {/* ── Create / Edit Modal ── */}
-      <Modal
-        show={showModal}
-        onClose={closeModal}
-        title={editItem ? 'Edit User' : 'Add New User'}
-        size="md"
-        footer={
-          <>
-            <button className="btn-secondary-fsp" onClick={closeModal}>Cancel</button>
-            <button className="btn-primary-fsp" onClick={handleSave}>
-              {editItem ? 'Save Changes' : 'Create User'}
-            </button>
-          </>
-        }
-      >
-        {formError && (
-          <div style={{
-            padding: '10px 14px', marginBottom: 16, borderRadius: 8,
-            background: 'var(--danger-bg)', color: 'var(--danger)',
-            border: '1px solid rgba(239,68,68,0.25)', fontSize: 13,
-          }}>
-            {formError}
-          </div>
-        )}
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label className="fsp-label">Full Name</label>
-            <input className="fsp-input" name="name" value={form.name} onChange={handleField} placeholder="Display name" />
-          </div>
-
-          <div>
-            <label className="fsp-label">Username *</label>
-            <input className="fsp-input" name="username" value={form.username} onChange={handleField} placeholder="Login username" />
-          </div>
-
-          <div>
-            <label className="fsp-label">Password *</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                className="fsp-input"
-                name="password"
-                type={showPass ? 'text' : 'password'}
-                value={form.password}
-                onChange={handleField}
-                placeholder="Password"
-                style={{ paddingRight: 38 }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPass((p) => !p)}
-                style={{
-                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
-                }}
-              >
-                {showPass ? <MdVisibilityOff size={16} /> : <MdVisibility size={16} />}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="fsp-label">Role</label>
-            <select className="fsp-select" name="role" value={form.role} onChange={handleField}>
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="fsp-label">Email</label>
-            <input className="fsp-input" name="email" value={form.email} onChange={handleField} placeholder="user@example.com" />
-          </div>
-
-          <div>
-            <label className="fsp-label">Phone</label>
-            <input className="fsp-input" name="phone" value={form.phone} onChange={handleField} placeholder="+91 XXXXX XXXXX" />
-          </div>
-
-          {form.role === 'User' && (
-            <div>
-              <label className="fsp-label">Project ID</label>
-              <input className="fsp-input" name="projectId" value={form.projectId} onChange={handleField} placeholder="e.g. PROJ-1234" />
-            </div>
-          )}
-        </div>
-      </Modal>
-
-      {/* ── View Modal ── */}
-      <Modal
-        show={!!viewItem}
-        onClose={() => setViewItem(null)}
-        title="User Details"
-        size="sm"
-        footer={<button className="btn-secondary-fsp" onClick={() => setViewItem(null)}>Close</button>}
-      >
-        {viewItem && (
-          <div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '4px 0 20px' }}>
-              <Avatar name={viewItem.name || viewItem.username} role={viewItem.role} size={60} />
-              <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{viewItem.name || viewItem.username}</div>
-              <RoleBadge role={viewItem.role} />
-            </div>
-            <div className="info-grid">
-              {[
-                ['User ID',  viewItem.id],
-                ['Username', viewItem.username],
-                ['Email',    viewItem.email || '—'],
-                ['Phone',    viewItem.phone || '—'],
-                ['Project',  viewItem.projectId || '—'],
-                ['Created',  viewItem.createdAt],
-              ].map(([k, v]) => (
-                <div key={k} className="info-cell">
-                  <span className="info-cell-label">{k}</span>
-                  <span className="info-cell-value" style={{ fontSize: 13 }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* ── Delete Confirm Modal ── */}
-      <Modal
-        show={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        title="Delete User"
-        size="sm"
-        footer={
-          <>
-            <button className="btn-secondary-fsp" onClick={() => setDeleteId(null)}>Cancel</button>
-            <button className="btn-danger-fsp" onClick={handleDelete}>Delete</button>
-          </>
-        }
-      >
-        <p style={{ color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
-          Are you sure you want to delete this user? This action cannot be undone.
-        </p>
-      </Modal>
     </div>
   );
 };

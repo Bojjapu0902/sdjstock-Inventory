@@ -11,7 +11,7 @@ import {
   getEnrichedItems, categories,
   getStockBarClass, formatCurrency, formatDate,
   getDaysUntilExpiry, getUrgencyType, getUrgencyLabel,
-} from '../data/mockData';
+} from '../services/mockData';
 
 // ── Mini sparkline SVG ────────────────────────────────
 const Sparkline = ({ data = [], color = '#4F46E5', height = 32, width = 80 }) => {
