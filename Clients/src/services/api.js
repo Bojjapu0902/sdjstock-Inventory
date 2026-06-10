@@ -1,7 +1,8 @@
 // Centralised fetch wrapper for all API calls.
 // Reads JWT from sessionStorage and injects it as Bearer token.
 
-const BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+//const BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const BASE = process.env.REACT_APP_API_URL || 'https://sdjstock-inventory.onrender.com/api'
 const SESSION_KEY = 'adjmarine_current_user';
 
 function getToken() {
