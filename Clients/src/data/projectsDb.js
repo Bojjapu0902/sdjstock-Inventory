@@ -1,8 +1,7 @@
 // =====================================================
 //  Projects Database — MongoDB-backed via REST API
-//  stockReceived is embedded inside each project doc.
 // =====================================================
-import api from './api';
+import api from '../services/api';
 
 /* ══════════════════════════════════════════════════
    PROJECTS
@@ -29,18 +28,15 @@ export function nextProjectId() { return `PRJ-${Date.now()}`; }
 export function nextRecordId(prefix) { return `${prefix}-${Date.now()}`; }
 
 /* ══════════════════════════════════════════════════
-   STOCK RECEIVED  —  embedded in project documents
+   STOCK RECEIVED
    ══════════════════════════════════════════════════ */
-
-/** Build { [projectId]: submissions[] } from the projects list. */
-function buildStockMap(projects) {
-  const map = {};
-  (projects || []).forEach((p) => { map[p.id] = p.stockReceived || []; });
-  return map;
-}
 
 export async function getAllStockReceived() {
   return api.get('/stock-received');
+}
+
+export async function getStockReceived(projectId) {
+  return api.get(`/stock-received/${projectId}`);
 }
 
 export async function addStockReceived(_all, projectId, submission) {
@@ -64,8 +60,8 @@ export async function approveSubmission(_all, projectId, submissionId, approvalI
 }
 
 export async function clearProjectStockReceived(_all, projectId) {
-  // stockReceived is embedded — deleting the project clears it automatically.
-  // This is a no-op; just return the current map.
+  const submissions = await getStockReceived(projectId);
+  await Promise.all(submissions.map((s) => api.delete(`/stock-received/${projectId}/${s.id}`)));
   return getAllStockReceived();
 }
 
@@ -102,14 +98,16 @@ export async function clearProjectStockUsed(_all, projectId) {
    ══════════════════════════════════════════════════ */
 
 export async function exportSnapshot() {
-  const [projects, stockUsed] = await Promise.all([
+  const [projects, stockAssignments, stockUsed] = await Promise.all([
     getProjects(),
+    getAllStockReceived(),
     getAllStockUsed(),
   ]);
   const snapshot = {
-    _schema:   'adjmarine-projects-v2',
+    _schema: 'adjmarine-projects-v1',
     _exported: new Date().toISOString(),
-    projects,   // stockReceived is embedded here
+    projects,
+    stockAssignments,
     stockUsed,
   };
   const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });

@@ -2,6 +2,18 @@ const router = require('express').Router();
 const auth   = require('../middleware/auth');
 const Item   = require('../models/InventoryItem');
 
+/**
+ * Derive currentStock from the full stockRecords array.
+ * 'in'  records (stock received)       → add qty
+ * 'out' records (assigned to project)  → subtract qty
+ */
+function recomputeStock(records) {
+  return (records || []).reduce((total, r) => {
+    const qty = Number(r.qty) || 0;
+    return r.direction === 'out' ? total - qty : total + qty;
+  }, 0);
+}
+
 // GET /api/inventory
 router.get('/', auth, async (req, res) => {
   try {
@@ -31,6 +43,7 @@ router.post('/', auth, async (req, res) => {
 router.put('/:id', auth, async (req, res) => {
   try {
     const { _id, __v, ...update } = req.body;
+    if (update.currentStock !== undefined) update.currentStock = Math.max(0, Number(update.currentStock) || 0);
     const item = await Item.findOneAndUpdate({ id: req.params.id }, { $set: update }, { new: true }).lean();
     if (!item) return res.status(404).json({ error: 'Item not found' });
     res.json(item);
@@ -45,27 +58,33 @@ router.delete('/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Stock-record sub-routes (embedded in InventoryItem) ──────────────────
+// ── Stock-record sub-routes ────────────────────────────────────────────────
+// After every add / edit / delete, currentStock is recomputed from all records.
 
-// POST /api/inventory/:id/stock-records  — push a new record + increment currentStock
+// POST /api/inventory/:id/stock-records  — add a stock record
 router.post('/:id/stock-records', auth, async (req, res) => {
   try {
     const { qty, rate, supplier = '', timestamp = '', date = '', time = '', loggedBy = '', notes = '' } = req.body;
-    const recordId = `SR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const existing = await Item.findOne({ id: req.params.id }).lean();
+    if (!existing) return res.status(404).json({ error: 'Item not found' });
+
+    const newRecord = {
+      id: `SR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      qty: +qty, rate: +rate, supplier, timestamp, date, time, loggedBy, notes,
+      direction: 'in',
+    };
+    const computed = recomputeStock([...existing.stockRecords, newRecord]);
+
     const item = await Item.findOneAndUpdate(
       { id: req.params.id },
-      {
-        $push: { stockRecords: { id: recordId, qty: +qty, rate: +rate, supplier, timestamp, date, time, loggedBy, notes } },
-        $inc:  { currentStock: +qty },
-      },
+      { $push: { stockRecords: newRecord }, $set: { currentStock: computed } },
       { new: true }
     ).lean();
-    if (!item) return res.status(404).json({ error: 'Item not found' });
     res.status(201).json(item);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /api/inventory/:id/stock-records/:recordId  — update record + adjust currentStock by delta
+// PUT /api/inventory/:id/stock-records/:recordId  — edit a stock record
 router.put('/:id/stock-records/:recordId', auth, async (req, res) => {
   try {
     const { qty, rate, supplier = '', timestamp = '', date = '', time = '', notes = '' } = req.body;
@@ -73,7 +92,12 @@ router.put('/:id/stock-records/:recordId', auth, async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Item not found' });
     const old = (existing.stockRecords || []).find((r) => r.id === req.params.recordId);
     if (!old) return res.status(404).json({ error: 'Stock record not found' });
-    const delta = +qty - old.qty;
+
+    const updatedRecords = (existing.stockRecords || []).map((r) =>
+      r.id === req.params.recordId ? { ...r, qty: +qty, rate: +rate, supplier, timestamp, date, time, notes } : r
+    );
+    const computed = recomputeStock(updatedRecords);
+
     const item = await Item.findOneAndUpdate(
       { id: req.params.id, 'stockRecords.id': req.params.recordId },
       {
@@ -85,8 +109,8 @@ router.put('/:id/stock-records/:recordId', auth, async (req, res) => {
           'stockRecords.$.date':      date,
           'stockRecords.$.time':      time,
           'stockRecords.$.notes':     notes,
+          currentStock:               computed,
         },
-        $inc: { currentStock: delta },
       },
       { new: true }
     ).lean();
@@ -95,7 +119,8 @@ router.put('/:id/stock-records/:recordId', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PATCH /api/inventory/:id/stock-records/:recordId/type  — set type (true=visible, false=hidden)
+// PATCH /api/inventory/:id/stock-records/:recordId/type  — toggle active flag
+// type has no effect on stock quantity — currentStock is NOT changed here.
 router.patch('/:id/stock-records/:recordId/type', auth, async (req, res) => {
   try {
     const { type } = req.body;
@@ -109,29 +134,38 @@ router.patch('/:id/stock-records/:recordId/type', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/inventory/:id/stock-records/:recordId  — pull record + decrement currentStock
+// DELETE /api/inventory/:id/stock-records/:recordId  — remove a stock record
 router.delete('/:id/stock-records/:recordId', auth, async (req, res) => {
   try {
     const existing = await Item.findOne({ id: req.params.id }).lean();
     if (!existing) return res.status(404).json({ error: 'Item not found' });
     const record = (existing.stockRecords || []).find((r) => r.id === req.params.recordId);
     if (!record) return res.status(404).json({ error: 'Stock record not found' });
+
+    const remainingRecords = (existing.stockRecords || []).filter((r) => r.id !== req.params.recordId);
+    const computed = recomputeStock(remainingRecords);
+
     const item = await Item.findOneAndUpdate(
       { id: req.params.id },
-      {
-        $pull: { stockRecords: { id: req.params.recordId } },
-        $inc:  { currentStock: -record.qty },
-      },
+      { $pull: { stockRecords: { id: req.params.recordId } }, $set: { currentStock: computed } },
       { new: true }
     ).lean();
     res.json(item);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/inventory/bulk-deduct  — subtract stock for multiple items
+// PATCH /api/inventory/reset-all-stock — set currentStock=0 for every item
+router.patch('/reset-all-stock', auth, async (req, res) => {
+  try {
+    const result = await Item.updateMany({}, { $set: { currentStock: 0 } });
+    res.json({ updated: result.modifiedCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/inventory/bulk-deduct  — subtract stock for multiple items (project assignment)
 router.post('/bulk-deduct', auth, async (req, res) => {
   try {
-    const { items } = req.body; // [{ itemId, quantity }]
+    const { items } = req.body;
     const result = {};
     for (const { itemId, quantity } of items) {
       const item = await Item.findOne({ id: itemId });

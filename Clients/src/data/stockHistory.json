@@ -1,0 +1,5 @@
+{
+  "_schema": "adjmarine-stock-history-v1",
+  "_note": "Seed data loaded on first run (empty localStorage). Every mutation is then persisted to localStorage under 'adjmarine_stock_history'.",
+  "records": {}
+}

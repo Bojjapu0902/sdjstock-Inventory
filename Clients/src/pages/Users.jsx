@@ -325,8 +325,16 @@ const Users = () => {
   };
 
   const handleToggleStatus = async (u) => {
-    const updated = await api.put(`/users/${u.id}`, { isActive: !u.isActive });
-    setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, isActive: updated.isActive } : x)));
+    const newStatus = !u.isActive;
+    setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, isActive: newStatus } : x)));
+    try {
+      const updated = await api.put(`/users/${u.id}`, { isActive: newStatus });
+      setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, isActive: updated.isActive } : x)));
+    } catch (err) {
+      setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, isActive: u.isActive } : x)));
+      console.error('Failed to toggle user status:', err.message);
+      alert(`Could not update status: ${err.message}`);
+    }
   };
 
   const openEdit   = (u) => { setSelected(u); setModal('edit');   };

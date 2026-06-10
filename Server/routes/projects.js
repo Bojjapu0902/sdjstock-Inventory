@@ -1,6 +1,14 @@
 const router  = require('express').Router();
 const auth    = require('../middleware/auth');
 const Project = require('../models/Project');
+const Item    = require('../models/InventoryItem');
+
+function recomputeStock(records) {
+  return (records || []).reduce((total, r) => {
+    const qty = Number(r.qty) || 0;
+    return r.direction === 'out' ? total - qty : total + qty;
+  }, 0);
+}
 
 // ── Project CRUD ─────────────────────────────────────────────────────────────
 
@@ -43,12 +51,47 @@ router.delete('/:id', auth, async (req, res) => {
 // POST /api/projects/:id/stock-received  — push a new submission
 router.post('/:id/stock-received', auth, async (req, res) => {
   try {
+    const { adminName = '', date = '', time = '', items = [] } = req.body;
+
+    // Stock availability check — reject if any item doesn't have enough currentStock
+    const stockDocs = await Promise.all(items.map((it) => Item.findOne({ id: it.itemId }).lean()));
+    const insufficient = items.find((it, i) => {
+      const available = stockDocs[i]?.currentStock ?? 0;
+      return Number(it.quantity) > available;
+    });
+    if (insufficient) {
+      const doc = stockDocs[items.indexOf(insufficient)];
+      return res.status(400).json({
+        error: `Insufficient stock for "${insufficient.itemName}" — available: ${doc?.currentStock ?? 0} ${insufficient.unit || ''}, requested: ${insufficient.quantity}`,
+      });
+    }
+
     const doc = await Project.findOneAndUpdate(
       { id: req.params.id },
       { $push: { stockReceived: req.body } },
       { new: true }
     ).lean();
     if (!doc) return res.status(404).json({ error: 'Project not found' });
+    const ts = date && time ? `${date}T${time}:00` : new Date().toISOString();
+    await Promise.all(items.map(async (it, idx) => {
+      const existing = stockDocs[idx];
+      if (!existing) return;
+      const outRecord = {
+        id:          `OUT-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+        qty:         Number(it.quantity),
+        rate:        0,
+        direction:   'out',
+        projectId:   doc.id,
+        projectName: doc.name,
+        date, time, timestamp: ts, loggedBy: adminName,
+      };
+      const computed = recomputeStock([...existing.stockRecords, outRecord]);
+      return Item.findOneAndUpdate(
+        { id: it.itemId },
+        { $push: { stockRecords: outRecord }, $set: { currentStock: computed } }
+      );
+    }));
+
     res.status(201).json(doc);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -273,6 +273,11 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
     if (!selectedItems.length) { setSubmitErr('Please select at least one item.'); return; }
     const bad = selectedItems.find((i) => !(parseFloat(selections[i.id]?.qty) > 0));
     if (bad) { setSubmitErr(`Enter a valid quantity for: ${bad.name}`); return; }
+    const overStock = selectedItems.find((i) => parseFloat(selections[i.id]?.qty) > (i.currentStock ?? 0));
+    if (overStock) {
+      setSubmitErr(`Insufficient stock for "${overStock.name}" — available: ${overStock.currentStock ?? 0} ${overStock.unit}, requested: ${parseFloat(selections[overStock.id]?.qty)}`);
+      return;
+    }
     setSubmitErr('');
     setSaving(true);
     try {
@@ -299,6 +304,8 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
         totalValue: subItems.reduce((s, i) => s + i.total, 0),
         items: subItems,
       });
+    } catch (err) {
+      setSubmitErr(err.message || 'Failed to save. Please try again.');
     } finally { setSaving(false); }
   };
 
@@ -368,6 +375,7 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
                           />
                         </th>
                         <th style={ISM_TH}>Item List</th>
+                        <th style={{ ...ISM_TH, width: 100, textAlign: 'center' }}>Available</th>
                         <th style={{ ...ISM_TH, width: 130 }}>Quantity</th>
                         <th style={{ ...ISM_TH, width: 115 }}>Pricing (₹)</th>
                         <th style={{ ...ISM_TH, width: 125 }}>Total Price (₹)</th>
@@ -381,11 +389,12 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
                         const qty       = parseFloat(sel.qty)   || 0;
                         const price     = parseFloat(sel.price) || 0;
                         const total     = qty * price;
+                        const overLimit = isChecked && qty > 0 && qty > (item.currentStock ?? 0);
                         return (
                           <tr
                             key={item.id}
                             style={{
-                              background: isChecked ? 'var(--primary-pale)' : idx % 2 === 0 ? '#fff' : 'var(--bg-main)',
+                              background: isChecked ? (overLimit ? '#FFF5F5' : 'var(--primary-pale)') : idx % 2 === 0 ? '#fff' : 'var(--bg-main)',
                               transition: 'background 0.15s',
                               cursor: 'pointer',
                             }}
@@ -403,6 +412,17 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
                               <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.3 }}>{item.name}</div>
                               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{item.category} · {item.unit}</div>
                             </td>
+                            {/* Available stock badge */}
+                            <td style={{ ...ISM_TD, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                              <span style={{
+                                display: 'inline-block', padding: '2px 9px', borderRadius: 20, fontSize: 11.5, fontWeight: 700,
+                                background: (item.currentStock ?? 0) === 0 ? '#FEE2E2' : '#ECFDF5',
+                                color:      (item.currentStock ?? 0) === 0 ? '#DC2626' : '#059669',
+                                border:     `1px solid ${(item.currentStock ?? 0) === 0 ? 'rgba(220,38,38,0.2)' : 'rgba(5,150,105,0.2)'}`,
+                              }}>
+                                {item.currentStock ?? 0} {item.unit}
+                              </span>
+                            </td>
                             <td style={ISM_TD} onClick={(e) => e.stopPropagation()}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                                 <input
@@ -415,16 +435,21 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
                                   placeholder="0"
                                   style={{
                                     width: 72, height: 30, padding: '0 8px',
-                                    border: '1.5px solid var(--border-color)',
+                                    border: `1.5px solid ${overLimit ? '#DC2626' : 'var(--border-color)'}`,
                                     borderRadius: 6, fontSize: 13,
                                     outline: 'none', fontFamily: 'inherit',
-                                    background: isChecked ? '#fff' : 'var(--bg-main)',
-                                    color: isChecked ? 'var(--text-primary)' : 'var(--text-muted)',
+                                    background: isChecked ? (overLimit ? '#FFF5F5' : '#fff') : 'var(--bg-main)',
+                                    color: isChecked ? (overLimit ? '#DC2626' : 'var(--text-primary)') : 'var(--text-muted)',
                                     cursor: isChecked ? 'text' : 'not-allowed',
                                   }}
                                 />
-                                <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{item.unit}</span>
+                                <span style={{ fontSize: 11, color: overLimit ? '#DC2626' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>{item.unit}</span>
                               </div>
+                              {overLimit && (
+                                <div style={{ fontSize: 10.5, color: '#DC2626', marginTop: 2, fontWeight: 600 }}>
+                                  max {item.currentStock} {item.unit}
+                                </div>
+                              )}
                             </td>
                             <td style={ISM_TD} onClick={(e) => e.stopPropagation()}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -564,6 +589,8 @@ const EditSubmissionModal = ({ submission, onSave, onClose }) => {
         totalValue: updatedItems.reduce((s, i) => s + i.total, 0),
         items: updatedItems,
       });
+    } catch (err) {
+      setSubmitErr(err.message || 'Failed to save. Please try again.');
     } finally { setSaving(false); }
   };
 

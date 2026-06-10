@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import {
   getProjects, addProject, updateProject, deleteProject,
-  addStockReceived, updateStockReceived,
+  getAllStockReceived, addStockReceived, updateStockReceived,
   deleteStockReceived, approveSubmission,
   getAllStockUsed, addStockUsed, deleteStockUsed,
   clearProjectStockUsed,
@@ -26,12 +26,11 @@ export function ProjectsProvider({ children }) {
       getProjects(),
       getUsers(),
       getAllStockUsed(),
-    ]).then(([p, u, su]) => {
-      const srMap = {};
-      p.forEach((proj) => { srMap[proj.id] = proj.stockReceived || []; });
+      getAllStockReceived(),
+    ]).then(([p, u, su, sr]) => {
       setProjects(p);
       setUsers(u);
-      setStockReceived(srMap);
+      setStockReceived(sr);
       setStockUsed(su);
     }).catch(console.error)
       .finally(() => setLoading(false));

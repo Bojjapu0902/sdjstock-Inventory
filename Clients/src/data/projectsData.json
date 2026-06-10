@@ -1,0 +1,204 @@
+{
+  "_schema": "adjmarine-projects-v1",
+  "_note": "Seed data loaded on first run (empty localStorage). Every mutation is then persisted to localStorage.",
+
+  "projects": [
+    {
+      "id": "PRJ-001",
+      "name": "Main Kitchen — Block A",
+      "location": "Hyderabad, Telangana",
+      "address": "Plot 12, KPHB Industrial Area, Kukatpally, Hyderabad – 500072",
+      "status": "Active",
+      "manager": "Rajesh Kumar",
+      "phone": "+91 98765 43210",
+      "email": "rajesh@adjmarine.com",
+      "description": "Primary kitchen facility for daily meal preparation",
+      "username": "kitchen_a",
+      "password": "kitchen@123",
+      "capacity": "500",
+      "createdAt": "2026-01-15"
+    },
+    {
+      "id": "PRJ-002",
+      "name": "Staff Canteen — Block B",
+      "location": "Hyderabad, Telangana",
+      "address": "Block B, Corporate Campus, Gachibowli, Hyderabad – 500032",
+      "status": "Under Maintenance",
+      "manager": "Sunita Rao",
+      "phone": "+91 91234 56789",
+      "email": "sunita@adjmarine.com",
+      "description": "Staff canteen serving 200+ employees",
+      "username": "canteen_b",
+      "password": "canteen@123",
+      "capacity": "200",
+      "createdAt": "2026-02-10"
+    },
+    {
+      "id": "PRJ-003",
+      "name": "Offshore Vessel — MV Adjmarine",
+      "location": "Visakhapatnam, Andhra Pradesh",
+      "address": "Berth 14, Outer Harbour, Visakhapatnam Port – 530035",
+      "status": "Active",
+      "manager": "Capt. Arjun Nair",
+      "phone": "+91 94455 66778",
+      "email": "arjun@adjmarine.com",
+      "description": "Galley stock for offshore crew (30 persons)",
+      "username": "vessel_mv1",
+      "password": "vessel@123",
+      "capacity": "30",
+      "createdAt": "2026-03-01"
+    }
+  ],
+
+  "stockAssignments": {
+    "PRJ-001": [
+      {
+        "id": "SR-1736935200000",
+        "adminName": "sdj",
+        "date": "15 Jan 2026",
+        "time": "11:00:00 AM",
+        "submittedAt": "2026-01-15T11:00:00.000Z",
+        "items": [
+          {
+            "itemId": "INV-001",
+            "itemName": "Rice Lalitha",
+            "category": "Grains & Pulses",
+            "quantity": "50",
+            "unit": "kg",
+            "rate": "48.00",
+            "supplier": "Lalitha Stores",
+            "notes": "Monthly stock — Jan batch",
+            "total": "2400.00"
+          },
+          {
+            "itemId": "INV-063",
+            "itemName": "Cooking Oil",
+            "category": "Oils & Fats",
+            "quantity": "20",
+            "unit": "L",
+            "rate": "155.00",
+            "supplier": "Ruchi Oils & Fats",
+            "notes": "",
+            "total": "3100.00"
+          },
+          {
+            "itemId": "INV-029",
+            "itemName": "Coriander Powder",
+            "category": "Spices & Masalas",
+            "quantity": "4",
+            "unit": "kg",
+            "rate": "120.00",
+            "supplier": "SpiceHub India",
+            "notes": "",
+            "total": "480.00"
+          }
+        ],
+        "totalItems": 3,
+        "totalValue": "5980.00"
+      },
+      {
+        "id": "SR-1737021600000",
+        "adminName": "sdj",
+        "date": "16 Jan 2026",
+        "time": "09:30:00 AM",
+        "submittedAt": "2026-01-16T09:30:00.000Z",
+        "items": [
+          {
+            "itemId": "INV-004",
+            "itemName": "Moong Dal",
+            "category": "Grains & Pulses",
+            "quantity": "20",
+            "unit": "kg",
+            "rate": "110.00",
+            "supplier": "Maha Grains Co.",
+            "notes": "Restock after weekly usage",
+            "total": "2200.00"
+          },
+          {
+            "itemId": "INV-086",
+            "itemName": "Tea Powder Agni",
+            "category": "Beverages",
+            "quantity": "3",
+            "unit": "kg",
+            "rate": "380.00",
+            "supplier": "National Foods Ltd.",
+            "notes": "",
+            "total": "1140.00"
+          },
+          {
+            "itemId": "INV-092",
+            "itemName": "Salt",
+            "category": "Packaged Foods",
+            "quantity": "10",
+            "unit": "kg",
+            "rate": "18.00",
+            "supplier": "Krishna Traders",
+            "notes": "",
+            "total": "180.00"
+          }
+        ],
+        "totalItems": 3,
+        "totalValue": "3520.00"
+      }
+    ],
+    "PRJ-003": [
+      {
+        "id": "SR-1740826800000",
+        "adminName": "sdj",
+        "date": "01 Mar 2026",
+        "time": "08:00:00 AM",
+        "submittedAt": "2026-03-01T08:00:00.000Z",
+        "items": [
+          {
+            "itemId": "INV-002",
+            "itemName": "Basmathi Rice",
+            "category": "Grains & Pulses",
+            "quantity": "80",
+            "unit": "kg",
+            "rate": "65.00",
+            "supplier": "Lalitha Stores",
+            "notes": "Vessel departure stock — 30-day voyage",
+            "total": "5200.00"
+          },
+          {
+            "itemId": "INV-064",
+            "itemName": "Ghee Amul",
+            "category": "Oils & Fats",
+            "quantity": "5",
+            "unit": "kg",
+            "rate": "540.00",
+            "supplier": "Amul Distributors",
+            "notes": "",
+            "total": "2700.00"
+          },
+          {
+            "itemId": "INV-030",
+            "itemName": "Chilli Powder",
+            "category": "Spices & Masalas",
+            "quantity": "3",
+            "unit": "kg",
+            "rate": "180.00",
+            "supplier": "SpiceHub India",
+            "notes": "",
+            "total": "540.00"
+          },
+          {
+            "itemId": "INV-093",
+            "itemName": "Sugar",
+            "category": "Packaged Foods",
+            "quantity": "15",
+            "unit": "kg",
+            "rate": "42.00",
+            "supplier": "Krishna Traders",
+            "notes": "",
+            "total": "630.00"
+          }
+        ],
+        "totalItems": 4,
+        "totalValue": "9070.00"
+      }
+    ]
+  },
+
+  "stockUsed": {}
+}

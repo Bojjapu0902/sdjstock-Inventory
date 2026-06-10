@@ -48,8 +48,23 @@ export function InventoryStockProvider({ children }) {
     } catch (err) { console.error('adjustStock error:', err); }
   }, [stockMap]);
 
+  /** Re-fetch the full stock map from the server. */
+  const refreshAll = useCallback(async () => {
+    try {
+      const items = await api.get('/inventory');
+      const map = {};
+      items.forEach((item) => { map[item.id] = item.currentStock; });
+      setStockMap(map);
+    } catch (err) { console.error('refreshAll error:', err); }
+  }, []);
+
+  /** Update a single item's stock in the map (no API call). */
+  const syncItemStock = useCallback((itemId, newQty) => {
+    setStockMap((prev) => ({ ...prev, [itemId]: newQty }));
+  }, []);
+
   return (
-    <InventoryStockContext.Provider value={{ stockMap, loading, deductStock, restoreStock, adjustStock }}>
+    <InventoryStockContext.Provider value={{ stockMap, loading, deductStock, restoreStock, adjustStock, refreshAll, syncItemStock }}>
       {children}
     </InventoryStockContext.Provider>
   );

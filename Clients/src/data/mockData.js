@@ -258,12 +258,11 @@ export const wastageByCategory = [
 ];
 
 // ── Utilities ────────────────────────────────────────
-const LOW_STOCK_THRESHOLD = 20;
-
-export const getStockStatus = (current) => {
-  if (current === 0)                    return { label: 'Out of Stock', type: 'danger'  };
-  if (current < LOW_STOCK_THRESHOLD)    return { label: 'Low Stock',    type: 'warning' };
-  return                                       { label: 'In Stock',     type: 'success' };
+export const getStockStatus = (current, min, max) => {
+  if (current === 0)          return { label: 'Out of Stock', type: 'danger'  };
+  if (current <= min)         return { label: 'Low Stock',    type: 'warning' };
+  if (current >= max * 0.9)   return { label: 'Overstocked', type: 'info'    };
+  return                             { label: 'In Stock',     type: 'success' };
 };
 
 export const getStockPercent  = (current, max) => Math.min(Math.round((current / max) * 100), 100);
@@ -457,12 +456,15 @@ export const getEnrichedItems = () =>
     const weeklyUsage   = +(dailyUsage * 7).toFixed(2);
     const monthlyUsage  = +(dailyUsage * 30).toFixed(2);
     const totalConsumed = +(dailyUsage * 30).toFixed(2);
+    const stockLeftPct  = Math.min(Math.round((item.currentStock / item.maxStock) * 100), 100);
+    const consumedPct   = Math.min(Math.round((totalConsumed / item.maxStock) * 100), 100);
+    const totalValue    = +(item.currentStock * item.unitCost).toFixed(2);
     const urgency       = getUrgencyType(daysRemaining);
 
     return {
       ...item,
       dailyUsage, weeklyUsage, monthlyUsage, totalConsumed,
       history, peakDay, lastRestocked, restockQty,
-      daysRemaining, urgency,
+      daysRemaining, stockLeftPct, consumedPct, totalValue, urgency,
     };
   });

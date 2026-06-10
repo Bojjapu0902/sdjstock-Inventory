@@ -5,7 +5,7 @@ import {
   MdWarehouse, MdLocationOn, MdPerson, MdPhone, MdEmail,
   MdInbox, MdOutbox, MdLogout, MdRestaurant,
   MdKeyboardArrowDown, MdKeyboardArrowUp, MdInfo,
-  MdCheckCircle, MdLock,
+  MdCheckCircle, MdLock, MdFilterList, MdSwapVert, MdClose,
 } from 'react-icons/md';
 import { getCurrentUser } from '../services/loginDb';
 import { useProjects }    from '../contexts/ProjectsContext';
@@ -28,6 +28,11 @@ const ProjectDetails = () => {
   const [expandedIds, setExpandedIds]     = useState(new Set());
   const [approvalDraft, setApprovalDraft] = useState({});
 
+  /* ── Stock Received filters ── */
+  const [sortOrder,      setSortOrder]      = useState('newest');
+  const [filterFromDate, setFilterFromDate] = useState('');
+  const [filterToDate,   setFilterToDate]   = useState('');
+
   /* ── derived data ── */
   const project       = useMemo(() => projects.find((p) => p.id === projectId) ?? null, [projects, projectId]);
   const stockReceived = allReceived[projectId] || [];
@@ -37,7 +42,19 @@ const ProjectDetails = () => {
   const toggleExpand = useCallback((id) =>
     setExpandedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }), []);
 
-  const grandTotal = stockReceived.reduce((s, sub) => s + Number(sub.totalValue || 0), 0);
+  const filteredReceived = useMemo(() => {
+    let list = [...stockReceived];
+    if (filterFromDate) list = list.filter((s) => s.date >= filterFromDate);
+    if (filterToDate)   list = list.filter((s) => s.date <= filterToDate);
+    list.sort((a, b) => {
+      const cmp = (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''));
+      return sortOrder === 'newest' ? -cmp : cmp;
+    });
+    return list;
+  }, [stockReceived, filterFromDate, filterToDate, sortOrder]);
+
+  const grandTotal = filteredReceived.reduce((s, sub) => s + Number(sub.totalValue || 0), 0);
+  const grandTotalAll = stockReceived.reduce((s, sub) => s + Number(sub.totalValue || 0), 0);
 
   /* Return draft array for a submission — falls back to stored per-item values */
   const getDraft = useCallback((sub) =>
@@ -200,15 +217,84 @@ const ProjectDetails = () => {
         {/* ══ STOCK RECEIVED — Accordion ══ */}
         {activeTab === 'received' && (
           <div className="fsp-card">
+            {/* ── Filter bar ── */}
+            {stockReceived.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #F1F5F9', flexWrap: 'wrap', background: '#FAFBFF' }}>
+                <MdFilterList style={{ color: '#94A3B8', fontSize: 18, flexShrink: 0 }} />
+
+                {/* Sort order */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <MdSwapVert style={{ color: '#64748B', fontSize: 16 }} />
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value)}
+                    style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid #E2E8F0', fontSize: 12.5, color: '#0F172A', background: '#fff', cursor: 'pointer', outline: 'none' }}
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                  </select>
+                </div>
+
+                {/* Divider */}
+                <div style={{ width: 1, height: 24, background: '#E2E8F0', flexShrink: 0 }} />
+
+                {/* From date */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600, whiteSpace: 'nowrap' }}>From</span>
+                  <input
+                    type="date"
+                    value={filterFromDate}
+                    max={filterToDate || undefined}
+                    onChange={(e) => setFilterFromDate(e.target.value)}
+                    style={{ padding: '5px 9px', borderRadius: 7, border: '1px solid #E2E8F0', fontSize: 12.5, color: '#0F172A', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* To date */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600, whiteSpace: 'nowrap' }}>To</span>
+                  <input
+                    type="date"
+                    value={filterToDate}
+                    min={filterFromDate || undefined}
+                    onChange={(e) => setFilterToDate(e.target.value)}
+                    style={{ padding: '5px 9px', borderRadius: 7, border: '1px solid #E2E8F0', fontSize: 12.5, color: '#0F172A', background: '#fff', outline: 'none', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* Clear filters */}
+                {(filterFromDate || filterToDate || sortOrder !== 'newest') && (
+                  <button
+                    onClick={() => { setFilterFromDate(''); setFilterToDate(''); setSortOrder('newest'); }}
+                    title="Clear filters"
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 7, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    <MdClose style={{ fontSize: 14 }} /> Clear
+                  </button>
+                )}
+
+                {/* Result count */}
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>
+                  {filteredReceived.length} of {stockReceived.length} submissions
+                </span>
+              </div>
+            )}
+
             {stockReceived.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 12, textAlign: 'center', color: '#94A3B8' }}>
                 <MdInbox style={{ fontSize: 48 }} />
                 <div style={{ fontWeight: 700, fontSize: 15, color: '#0F172A' }}>No Stock Received Yet</div>
                 <div style={{ fontSize: 13 }}>The admin has not assigned any stock to this project yet.</div>
               </div>
+            ) : filteredReceived.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 20px', gap: 12, textAlign: 'center', color: '#94A3B8' }}>
+                <MdFilterList style={{ fontSize: 40 }} />
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#0F172A' }}>No results for selected filters</div>
+                <div style={{ fontSize: 13 }}>Try adjusting the date range or sort order.</div>
+              </div>
             ) : (
               <div style={{ padding: '12px 16px 16px' }}>
-                {stockReceived.map((sub, idx) => {
+                {filteredReceived.map((sub, idx) => {
                   const isOpen      = expandedIds.has(sub.id);
                   const isApproved  = sub.approvalStatus === 'approved';
                   const subTotal    = Number(sub.totalValue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -413,17 +499,28 @@ const ProjectDetails = () => {
                 {/* Grand total footer */}
                 <div style={{ marginTop: 8, padding: '12px 16px', borderRadius: 10, background: '#F8FAFF', border: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, flexWrap: 'wrap', gap: 8 }}>
                   <span style={{ color: '#475569' }}>
-                    {stockReceived.length} submission{stockReceived.length !== 1 ? 's' : ''} &nbsp;·&nbsp;
-                    {stockReceived.reduce((s, sub) => s + (sub.items?.length || 0), 0)} total items
-                    {stockReceived.filter((s) => s.approvalStatus === 'approved').length > 0 && (
+                    {filteredReceived.length} submission{filteredReceived.length !== 1 ? 's' : ''}
+                    {filteredReceived.length !== stockReceived.length && (
+                      <span style={{ color: '#94A3B8' }}> (filtered from {stockReceived.length})</span>
+                    )}
+                    &nbsp;·&nbsp;
+                    {filteredReceived.reduce((s, sub) => s + (sub.items?.length || 0), 0)} total items
+                    {filteredReceived.filter((s) => s.approvalStatus === 'approved').length > 0 && (
                       <span style={{ marginLeft: 8, color: '#10B981', fontWeight: 600 }}>
-                        · {stockReceived.filter((s) => s.approvalStatus === 'approved').length} approved
+                        · {filteredReceived.filter((s) => s.approvalStatus === 'approved').length} approved
                       </span>
                     )}
                   </span>
-                  <span style={{ fontWeight: 800, color: '#10B981', fontSize: 15 }}>
-                    Grand Total: ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                    <span style={{ fontWeight: 800, color: '#10B981', fontSize: 15 }}>
+                      Total: ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    {filteredReceived.length !== stockReceived.length && (
+                      <span style={{ fontSize: 11, color: '#94A3B8' }}>
+                        All submissions: ₹{grandTotalAll.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

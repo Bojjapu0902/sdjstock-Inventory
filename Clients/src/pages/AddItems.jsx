@@ -4,10 +4,10 @@ import { useInventoryStock } from '../hooks/useInventoryStock';
 import {
   MdFileDownload, MdClose,
   MdRefresh, MdInventory2,
-  MdLocationOn, MdCategory, MdCalendarToday, MdPerson,
-  MdAttachMoney, MdInfo,
+  MdCategory, MdPerson,
+  MdInfo,
   MdKeyboardArrowDown, MdAdd, MdEdit, MdDelete,
-  MdPrint, MdEmail,
+  MdPrint, MdEmail, MdSwapVert, MdLayersClear,
 } from 'react-icons/md';
 import AddItemModal from './AddItemModal';
 import AddStockModal from './AddStockModal';
@@ -19,13 +19,14 @@ import {
 import StatusBadge from '../components/common/StatusBadge';
 import {
   categories,
-  getStockStatus, getStockPercent, getStockBarClass,
-  formatCurrency, formatDate, getDaysUntilExpiry,
+  getStockStatus,
   getEnrichedItems, itemUsageData,
 } from '../services/mockData';
 import api from '../services/api';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const SORT_STATUS_ORDER = { 'Out of Stock': 0, 'Low Stock': 1, 'In Stock': 2 };
 
 const URGENCY_CONFIG = {
   critical: { icon: '🔴', label: 'Critical — Reorder Immediately', color: '#EF4444', bg: '#FEF2F2', border: 'rgba(239,68,68,0.2)'  },
@@ -64,10 +65,8 @@ const ItemDrawer = ({ item, onClose }) => {
 
   const usage         = itemUsageData[item.id] || {};
   const daysRemaining = item.dailyUsage > 0 ? Math.floor(item.currentStock / item.dailyUsage) : 999;
-  const daysToExpiry  = getDaysUntilExpiry(item.expiryDate);
-  const stockPct      = getStockPercent(item.currentStock, item.maxStock);
   const urgConf       = URGENCY_CONFIG[item.urgency] || URGENCY_CONFIG.low;
-  const { label: stockLabel, type: stockType } = getStockStatus(item.currentStock, item.minStock, item.maxStock);
+  const { label: stockLabel, type: stockType } = getStockStatus(item.currentStock);
 
   const weeklyData = (item.history || []).map((v, i) => ({ day: DAY_LABELS[i], consumed: v }));
 
@@ -75,7 +74,6 @@ const ItemDrawer = ({ item, onClose }) => {
     { label: 'Current Stock',  value: `${item.currentStock} ${item.unit}`, icon: '📦', accent: stockType === 'danger' ? '#EF4444' : stockType === 'warning' ? '#F59E0B' : '#10B981' },
     { label: 'Daily Usage',    value: `${item.dailyUsage} ${item.unit}`,   icon: '📊', accent: '#4F46E5' },
     { label: 'Days of Stock',  value: item.currentStock === 0 ? '0d' : daysRemaining >= 999 ? '∞' : `${daysRemaining}d`, icon: '⏱️', accent: daysRemaining <= 3 ? '#EF4444' : daysRemaining <= 7 ? '#F59E0B' : '#10B981' },
-    { label: 'Stock Value',    value: formatCurrency(item.currentStock * item.unitCost), icon: '💰', accent: '#8B5CF6' },
   ];
 
   return (
@@ -149,53 +147,6 @@ const ItemDrawer = ({ item, onClose }) => {
                 </div>
               </div>
 
-              <div className="drawer-section">
-                <div className="drawer-section-title">Stock Level</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
-                  <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{item.currentStock} {item.unit} remaining</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{stockPct}% of {item.maxStock} {item.unit}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                  <span>Min: {item.minStock} {item.unit}</span>
-                  <span>Reorder point</span>
-                  <span>Max: {item.maxStock} {item.unit}</span>
-                </div>
-              </div>
-
-              <div className="drawer-section">
-                <div className="drawer-section-title">Consumed vs Remaining (30-day)</div>
-                <div style={{ height: 22, borderRadius: 8, overflow: 'hidden', background: 'var(--border-color)', display: 'flex' }}>
-                  <div style={{ width: `${Math.min(item.consumedPct, 100)}%`, background: 'linear-gradient(90deg,#EF4444,#F97316)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>
-                    {item.consumedPct > 12 ? `${item.consumedPct}%` : ''}
-                  </div>
-                  <div style={{ flex: 1, background: 'linear-gradient(90deg,#10B981,#059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>
-                    {100 - item.consumedPct > 12 ? `${100 - item.consumedPct}%` : ''}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: 3, background: '#EF4444' }} />
-                    <span style={{ color: 'var(--text-secondary)' }}>Consumed: <strong>{item.totalConsumed} {item.unit}</strong></span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: 3, background: '#10B981' }} />
-                    <span style={{ color: 'var(--text-secondary)' }}>Remaining: <strong>{item.currentStock} {item.unit}</strong></span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="drawer-section">
-                <div className="drawer-section-title">Expiry Status</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, background: daysToExpiry <= 7 ? 'var(--danger-bg)' : daysToExpiry <= 14 ? 'var(--warning-bg)' : 'var(--success-bg)', border: `1px solid ${daysToExpiry <= 7 ? 'rgba(239,68,68,0.15)' : daysToExpiry <= 14 ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)'}` }}>
-                  <span style={{ fontSize: 24 }}>{daysToExpiry <= 0 ? '💀' : daysToExpiry <= 7 ? '⚠️' : daysToExpiry <= 14 ? '🕐' : '✅'}</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: daysToExpiry <= 7 ? '#991B1B' : daysToExpiry <= 14 ? '#92400E' : '#065F46' }}>
-                      {daysToExpiry <= 0 ? 'Expired — remove from stock' : `Expires in ${daysToExpiry} day${daysToExpiry !== 1 ? 's' : ''}`}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>Expiry Date: {formatDate(item.expiryDate)}</div>
-                  </div>
-                </div>
-              </div>
             </>
           )}
 
@@ -265,22 +216,6 @@ const ItemDrawer = ({ item, onClose }) => {
                 </div>
               </div>
 
-              <div className="drawer-section">
-                <div className="drawer-section-title">Cost Analysis</div>
-                <div className="info-grid">
-                  {[
-                    { label: 'Cost per Day',   value: formatCurrency(item.dailyUsage    * item.unitCost) },
-                    { label: 'Cost per Week',  value: formatCurrency(item.weeklyUsage   * item.unitCost) },
-                    { label: 'Cost per Month', value: formatCurrency(item.monthlyUsage  * item.unitCost) },
-                    { label: '30-Day Spend',   value: formatCurrency(item.totalConsumed * item.unitCost) },
-                  ].map((c) => (
-                    <div key={c.label} className="info-cell">
-                      <span className="info-cell-label">{c.label}</span>
-                      <span className="info-cell-value" style={{ color: 'var(--primary)' }}>{c.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </>
           )}
 
@@ -291,14 +226,10 @@ const ItemDrawer = ({ item, onClose }) => {
                 <div className="drawer-section-title">Item Information</div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {[
-                    { icon: <MdInventory2 />,   label: 'Item ID',          value: item.id },
-                    { icon: <MdCategory />,     label: 'Category',         value: item.category },
-                    { icon: <MdInfo />,         label: 'Unit',             value: item.unit },
-                    { icon: <MdLocationOn />,   label: 'Storage Location', value: item.location },
-                    { icon: <MdPerson />,       label: 'Supplier',         value: item.supplier },
-                    { icon: <MdCalendarToday />,label: 'Expiry Date',      value: formatDate(item.expiryDate) },
-                    { icon: <MdAttachMoney />,  label: 'Unit Cost',        value: formatCurrency(item.unitCost) },
-                    { icon: <MdAttachMoney />,  label: 'Total Value',      value: formatCurrency(item.currentStock * item.unitCost) },
+                    { icon: <MdInventory2 />, label: 'Item ID',  value: item.id },
+                    { icon: <MdCategory />,   label: 'Category', value: item.category },
+                    { icon: <MdInfo />,       label: 'Unit',     value: item.unit },
+                    { icon: <MdPerson />,     label: 'Supplier', value: item.supplier },
                   ].map(({ icon, label, value }) => (
                     <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border-light)' }}>
                       <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--primary-pale)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
@@ -319,27 +250,11 @@ const ItemDrawer = ({ item, onClose }) => {
                   <div style={{ width: 42, height: 42, borderRadius: 10, background: 'var(--success-bg)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>📦</div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>+{usage.restockQty} {item.unit} received</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{usage.lastRestocked ? formatDate(usage.lastRestocked) : 'N/A'} · {item.supplier}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{usage.lastRestocked || 'N/A'} · {item.supplier}</div>
                   </div>
                 </div>
               </div>
 
-              <div className="drawer-section">
-                <div className="drawer-section-title">Stock Thresholds</div>
-                <div className="info-grid">
-                  {[
-                    { label: 'Min / Reorder Point', value: `${item.minStock} ${item.unit}` },
-                    { label: 'Max Capacity',         value: `${item.maxStock} ${item.unit}` },
-                    { label: 'Current Level',        value: `${item.currentStock} ${item.unit}` },
-                    { label: 'Utilisation',          value: `${stockPct}%` },
-                  ].map((c) => (
-                    <div key={c.label} className="info-cell">
-                      <span className="info-cell-label">{c.label}</span>
-                      <span className="info-cell-value">{c.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </>
           )}
 
@@ -438,7 +353,7 @@ const handleDownloadRecord = (rec, item) => {
    ADD ITEMS PAGE  —  read-only catalog view
    ══════════════════════════════════════════════════════ */
 const AddItems = () => {
-  const { stockMap } = useInventoryStock();
+  const { stockMap, refreshAll, syncItemStock } = useInventoryStock();
 
   const [baseItems, setBaseItems] = useState([]);
 
@@ -452,6 +367,7 @@ const AddItems = () => {
   const [search, setSearch]         = useState('');
   const [catFilter, setCatFilter]   = useState('All Categories');
   const [statusFilter, setStatus]   = useState('All');
+  const [sortBy, setSortBy]         = useState('default');
   const [selectedItem, setSelected] = useState(null);
   const [expandedIds, setExpandedIds] = useState(new Set());
   const [modalOpen, setModalOpen]   = useState(false);
@@ -464,7 +380,7 @@ const AddItems = () => {
 
   const handleSave = async (payload) => {
     if (modalMode === 'add') {
-      const body = { currentStock: 0, minStock: 0, maxStock: 0, unitCost: 0, location: '', expiryDate: '', ...payload };
+      const body = { currentStock: 0, ...payload };
       const created = await api.post('/inventory', body);
       setBaseItems((prev) => [...prev, created]);
     } else {
@@ -490,9 +406,11 @@ const AddItems = () => {
   const [stockItem,       setStockItem]       = useState(null);
   const [stockEditRecord, setStockEditRecord] = useState(null); // { record, item }
 
-  /* replaces the matching item in baseItems with the full updated item returned by the server */
-  const syncItem = (updated) =>
+  /* replaces the matching item in baseItems AND syncs stockMap so liveItems updates immediately */
+  const syncItem = (updated) => {
     setBaseItems((prev) => prev.map((i) => i.id === updated.id ? { ...i, ...updated } : i));
+    syncItemStock(updated.id, updated.currentStock);
+  };
 
   const handleAddStock = async ({ qty, rate, timestamp, supplier, date, time }) => {
     const updated = await api.post(`/inventory/${stockItem.id}/stock-records`, {
@@ -534,15 +452,28 @@ const AddItems = () => {
     setBaseItems((prev) => prev.map((i) => i.id === item.id ? { ...i, active: updated.active ?? newActive } : i));
   };
 
-  useEffect(() => {
+  const loadItems = useCallback(() => {
     const enrichedMap = Object.fromEntries(getEnrichedItems().map((e) => [e.id, e]));
     api.get('/inventory')
       .then((items) => setBaseItems(items.map((item) => ({
-        ...(enrichedMap[item.id] || { urgency: 'low', history: [0,0,0,0,0,0,0], dailyUsage: 0, weeklyUsage: 0, monthlyUsage: 0, totalConsumed: 0, stockLeftPct: 100, consumedPct: 0, totalValue: 0, daysRemaining: 999, peakDay: 'N/A' }),
+        ...(enrichedMap[item.id] || { urgency: 'low', history: [0,0,0,0,0,0,0], dailyUsage: 0, weeklyUsage: 0, monthlyUsage: 0, totalConsumed: 0, daysRemaining: 999, peakDay: 'N/A' }),
         ...item,
       }))))
       .catch(console.error);
   }, []);
+
+  useEffect(() => { loadItems(); }, [loadItems]);
+
+  const handleResetAllStock = () => {
+    setDeleteConfirm({
+      title:   'Reset All Stock to Zero',
+      message: `This will set currentStock = 0 for all ${baseItems.length} inventory items. Stock records are kept but the running total resets. This cannot be undone.`,
+      onConfirm: async () => {
+        await api.patch('/inventory/reset-all-stock', {});
+        await Promise.all([loadItems(), refreshAll()]);
+      },
+    });
+  };
 
   const toggleExpand = useCallback((id) => {
     setExpandedIds((prev) => {
@@ -552,20 +483,37 @@ const AddItems = () => {
     });
   }, []);
 
-  const filteredItems = useMemo(() => liveItems.filter((item) => {
-    const q = search.toLowerCase();
-    const matchSearch = !search || item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || item.supplier.toLowerCase().includes(q);
-    const matchCat    = catFilter === 'All Categories' || item.category === catFilter;
-    const { label }   = getStockStatus(item.currentStock, item.minStock, item.maxStock);
-    const matchStatus = statusFilter === 'All' || label === statusFilter;
-    return matchSearch && matchCat && matchStatus;
-  }), [liveItems, search, catFilter, statusFilter]);
+  const filteredItems = useMemo(() => {
+    const filtered = liveItems.filter((item) => {
+      const q = search.toLowerCase();
+      const matchSearch = !search || item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || item.supplier.toLowerCase().includes(q);
+      const matchCat    = catFilter === 'All Categories' || item.category === catFilter;
+      const { label }   = getStockStatus(item.currentStock);
+      const matchStatus = statusFilter === 'All' || label === statusFilter;
+      return matchSearch && matchCat && matchStatus;
+    });
+
+    if (sortBy === 'default') return filtered;
+
+    return [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'name-az':    return a.name.localeCompare(b.name);
+        case 'name-za':    return b.name.localeCompare(a.name);
+        case 'cat-az':     return a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+        case 'cat-za':     return b.category.localeCompare(a.category) || a.name.localeCompare(b.name);
+        case 'stock-hi':   return b.currentStock - a.currentStock;
+        case 'stock-lo':   return a.currentStock - b.currentStock;
+        case 'status':     return (SORT_STATUS_ORDER[getStockStatus(a.currentStock).label] ?? 3) - (SORT_STATUS_ORDER[getStockStatus(b.currentStock).label] ?? 3);
+        default:           return 0;
+      }
+    });
+  }, [liveItems, search, catFilter, statusFilter, sortBy]);
 
   const summary = useMemo(() => {
     let inStock = 0, low = 0, out = 0, critical = 0;
     for (const i of liveItems) {
       if (i.currentStock === 0)                                                              out++;
-      else if (getStockStatus(i.currentStock, i.minStock, i.maxStock).label === 'Low Stock') low++;
+      else if (getStockStatus(i.currentStock).label === 'Low Stock') low++;
       else                                                                                   inStock++;
       if (i.urgency === 'critical' || i.urgency === 'high') critical++;
     }
@@ -582,6 +530,14 @@ const AddItems = () => {
         </div>
         <div className="page-header-actions">
           <button className="btn-secondary-fsp"><MdFileDownload /> Export CSV</button>
+          <button
+            className="btn-secondary-fsp"
+            onClick={handleResetAllStock}
+            title="Set currentStock = 0 for all items"
+            style={{ color: '#DC2626', borderColor: 'rgba(220,38,38,0.35)', background: '#FEF2F2' }}
+          >
+            <MdLayersClear /> Reset All Stock
+          </button>
           <button className="btn-primary-fsp" onClick={openAdd}><MdAdd /> Add Item</button>
         </div>
       </div>
@@ -618,7 +574,18 @@ const AddItems = () => {
           <select className="filter-select" value={statusFilter} onChange={(e) => setStatus(e.target.value)}>
             {['All', 'In Stock', 'Low Stock', 'Out of Stock'].map((s) => <option key={s}>{s}</option>)}
           </select>
-          <button className="btn-icon-sm" title="Reset filters" onClick={() => { setSearch(''); setCatFilter('All Categories'); setStatus('All'); }}>
+          <select className="filter-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+            style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <option value="default">Sort: Default</option>
+            <option value="name-az">Name A → Z</option>
+            <option value="name-za">Name Z → A</option>
+            <option value="cat-az">Category A → Z</option>
+            <option value="cat-za">Category Z → A</option>
+            <option value="stock-hi">Stock: High → Low</option>
+            <option value="stock-lo">Stock: Low → High</option>
+            <option value="status">Status: Critical first</option>
+          </select>
+          <button className="btn-icon-sm" title="Reset filters" onClick={() => { setSearch(''); setCatFilter('All Categories'); setStatus('All'); setSortBy('default'); }}>
             <MdRefresh />
           </button>
           <span className="filter-count">{filteredItems.length} of {baseItems.length} items</span>
@@ -637,7 +604,7 @@ const AddItems = () => {
           <div style={{ padding: '8px 16px 16px' }}>
             {filteredItems.map((row) => {
               const isOpen = expandedIds.has(row.id);
-              const { label: stockLabel, type: stockType } = getStockStatus(row.currentStock, row.minStock, row.maxStock);
+              const { label: stockLabel, type: stockType } = getStockStatus(row.currentStock);
               const conf       = URGENCY_CONFIG[row.urgency] || URGENCY_CONFIG.low;
               const rowHistory = [...(row.stockRecords || [])]
                 .sort((a, b) => new Date(b.timestamp || b.date) - new Date(a.timestamp || a.date));
@@ -784,86 +751,81 @@ const AddItems = () => {
                             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{rowHistory.length} record{rowHistory.length !== 1 ? 's' : ''}</span>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {rowHistory.map((rec, i) => (
-                              <div key={rec.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: rec.type === false ? '#F3F4F6' : row.active === false ? '#F3F4F6' : '#fff', borderRadius: 8, border: `1px solid ${rec.type === false ? 'rgba(156,163,175,0.3)' : 'var(--border-light)'}`, fontSize: 12.5, opacity: rec.type === false ? 0.65 : 1, transition: 'opacity 0.2s, background 0.2s' }}>
-                                {/* Index badge */}
-                                <span style={{ width: 20, height: 20, borderRadius: 6, background: 'var(--primary-pale)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>{rowHistory.length - i}</span>
-                                {/* Date + Time */}
-                                <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>📅 {rec.date}{rec.time ? ` · ${rec.time}` : ''}</span>
-                                {/* Supplier */}
-                                {rec.supplier && <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, padding: '1px 7px', background: 'var(--primary-pale)', borderRadius: 20, whiteSpace: 'nowrap' }}>{rec.supplier}</span>}
-                                {/* Qty */}
-                                <span style={{ fontWeight: 700, color: 'var(--success)', whiteSpace: 'nowrap' }}>+{rec.qty} {row.unit}</span>
-                                {/* Rate */}
-                                <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>@ ₹{rec.rate}/{row.unit}</span>
-                                {/* Total */}
-                                <span style={{ fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>₹{(rec.qty * rec.rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                {rec.loggedBy && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>by {rec.loggedBy}</span>}
-                                {rec.notes && <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.notes}</span>}
-                                {/* Spacer */}
-                                <div style={{ flex: 1 }} />
-                                {/* Record actions */}
-                                <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
-                                  {/* Record active/inactive toggle */}
-                                  <button
-                                    onClick={() => handleToggleRecordActive(rec, row)}
-                                    title={rec.type === false ? 'Activate record' : 'Deactivate record'}
-                                    style={{
-                                      height: 22, padding: '0 8px', borderRadius: 6,
-                                      border: `1px solid ${rec.type === false ? 'rgba(156,163,175,0.4)' : 'rgba(16,185,129,0.35)'}`,
-                                      background: rec.type === false ? '#F3F4F6' : 'var(--success-bg, #ECFDF5)',
-                                      color: rec.type === false ? '#6B7280' : 'var(--success, #10B981)',
-                                      fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                                      display: 'flex', alignItems: 'center', gap: 4,
-                                      transition: 'all 0.18s', whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: rec.type === false ? '#9CA3AF' : '#10B981', display: 'inline-block', flexShrink: 0 }} />
-                                    {rec.type === false ? 'Inactive' : 'Active'}
-                                  </button>
-                                  <button
-                                    className="btn-icon-sm"
-                                    title="Print record"
-                                    onClick={() => handlePrintRecord(rec, row)}
-                                    style={{ width: 26, height: 26, fontSize: 13, color: 'var(--text-secondary)' }}
-                                  >
-                                    <MdPrint />
-                                  </button>
-                                  <button
-                                    className="btn-icon-sm"
-                                    title="Send by email"
-                                    onClick={() => handleMailRecord(rec, row)}
-                                    style={{ width: 26, height: 26, fontSize: 13, color: '#3B82F6' }}
-                                  >
-                                    <MdEmail />
-                                  </button>
-                                  <button
-                                    className="btn-icon-sm"
-                                    title="Download as CSV"
-                                    onClick={() => handleDownloadRecord(rec, row)}
-                                    style={{ width: 26, height: 26, fontSize: 13, color: 'var(--success)' }}
-                                  >
-                                    <MdFileDownload />
-                                  </button>
-                                  <button
-                                    className="btn-icon-sm"
-                                    title="Edit record"
-                                    onClick={() => setStockEditRecord({ record: rec, item: row })}
-                                    style={{ width: 26, height: 26, fontSize: 13, color: 'var(--warning)' }}
-                                  >
-                                    <MdEdit />
-                                  </button>
-                                  <button
-                                    className="btn-icon-sm danger"
-                                    title="Delete record"
-                                    onClick={() => handleDeleteStockRecord(rec, row)}
-                                    style={{ width: 26, height: 26, fontSize: 13 }}
-                                  >
-                                    <MdDelete />
-                                  </button>
+                            {rowHistory.map((rec, i) => {
+                              const isOut = rec.direction === 'out';
+                              return (
+                                <div key={rec.id} style={{
+                                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px',
+                                  background: rec.type === false ? '#F3F4F6' : isOut ? '#FFF5F5' : row.active === false ? '#F3F4F6' : '#fff',
+                                  borderRadius: 8,
+                                  border: `1px solid ${rec.type === false ? 'rgba(156,163,175,0.3)' : isOut ? 'rgba(239,68,68,0.2)' : 'var(--border-light)'}`,
+                                  fontSize: 12.5, opacity: rec.type === false ? 0.65 : 1, transition: 'opacity 0.2s, background 0.2s',
+                                }}>
+                                  {/* Index badge */}
+                                  <span style={{ width: 20, height: 20, borderRadius: 6, background: isOut ? '#FEE2E2' : 'var(--primary-pale)', color: isOut ? '#DC2626' : 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+                                    {rowHistory.length - i}
+                                  </span>
+                                  {/* Date + Time */}
+                                  <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>📅 {rec.date}{rec.time ? ` · ${rec.time}` : ''}</span>
+
+                                  {isOut ? (
+                                    <>
+                                      {/* Project chip */}
+                                      <span style={{ fontSize: 11, color: '#DC2626', fontWeight: 700, padding: '2px 8px', background: '#FEE2E2', borderRadius: 20, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        📤 {rec.projectName || rec.projectId}
+                                      </span>
+                                      {/* Qty (outgoing — red, negative sign) */}
+                                      <span style={{ fontWeight: 700, color: '#DC2626', whiteSpace: 'nowrap' }}>−{rec.qty} {row.unit}</span>
+                                      {/* Assigned by */}
+                                      {rec.loggedBy && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>assigned by {rec.loggedBy}</span>}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {/* Supplier */}
+                                      {rec.supplier && <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, padding: '1px 7px', background: 'var(--primary-pale)', borderRadius: 20, whiteSpace: 'nowrap' }}>{rec.supplier}</span>}
+                                      {/* Qty */}
+                                      <span style={{ fontWeight: 700, color: 'var(--success)', whiteSpace: 'nowrap' }}>+{rec.qty} {row.unit}</span>
+                                      {/* Rate */}
+                                      <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>@ ₹{rec.rate}/{row.unit}</span>
+                                      {/* Total */}
+                                      <span style={{ fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>₹{(rec.qty * rec.rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                      {rec.loggedBy && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>by {rec.loggedBy}</span>}
+                                      {rec.notes && <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.notes}</span>}
+                                    </>
+                                  )}
+
+                                  {/* Spacer */}
+                                  <div style={{ flex: 1 }} />
+
+                                  {/* Record actions — only for incoming records */}
+                                  {!isOut && (
+                                    <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                                      <button
+                                        onClick={() => handleToggleRecordActive(rec, row)}
+                                        title={rec.type === false ? 'Activate record' : 'Deactivate record'}
+                                        style={{
+                                          height: 22, padding: '0 8px', borderRadius: 6,
+                                          border: `1px solid ${rec.type === false ? 'rgba(156,163,175,0.4)' : 'rgba(16,185,129,0.35)'}`,
+                                          background: rec.type === false ? '#F3F4F6' : 'var(--success-bg, #ECFDF5)',
+                                          color: rec.type === false ? '#6B7280' : 'var(--success, #10B981)',
+                                          fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                          display: 'flex', alignItems: 'center', gap: 4,
+                                          transition: 'all 0.18s', whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: rec.type === false ? '#9CA3AF' : '#10B981', display: 'inline-block', flexShrink: 0 }} />
+                                        {rec.type === false ? 'Inactive' : 'Active'}
+                                      </button>
+                                      <button className="btn-icon-sm" title="Print record" onClick={() => handlePrintRecord(rec, row)} style={{ width: 26, height: 26, fontSize: 13, color: 'var(--text-secondary)' }}><MdPrint /></button>
+                                      <button className="btn-icon-sm" title="Send by email" onClick={() => handleMailRecord(rec, row)} style={{ width: 26, height: 26, fontSize: 13, color: '#3B82F6' }}><MdEmail /></button>
+                                      <button className="btn-icon-sm" title="Download as CSV" onClick={() => handleDownloadRecord(rec, row)} style={{ width: 26, height: 26, fontSize: 13, color: 'var(--success)' }}><MdFileDownload /></button>
+                                      <button className="btn-icon-sm" title="Edit record" onClick={() => setStockEditRecord({ record: rec, item: row })} style={{ width: 26, height: 26, fontSize: 13, color: 'var(--warning)' }}><MdEdit /></button>
+                                      <button className="btn-icon-sm danger" title="Delete record" onClick={() => handleDeleteStockRecord(rec, row)} style={{ width: 26, height: 26, fontSize: 13 }}><MdDelete /></button>
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}

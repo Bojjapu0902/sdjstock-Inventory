@@ -27,7 +27,7 @@ const AddStockModal = ({ item, record = null, onSave, onClose }) => {
       setSupplier(record.supplier || '');
     } else {
       setQty('');
-      setRate(item?.unitCost ?? '');
+      setRate('');
       setDate(today());
       setTime(nowTime());
       setSupplier(item?.supplier || '');
