@@ -2,6 +2,8 @@ const router  = require('express').Router();
 const auth    = require('../middleware/auth');
 const Project = require('../models/Project');
 
+// ── Project CRUD ─────────────────────────────────────────────────────────────
+
 router.get('/', auth, async (req, res) => {
   try { res.json(await Project.find({}).lean()); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -9,15 +11,20 @@ router.get('/', auth, async (req, res) => {
 
 router.post('/', auth, async (req, res) => {
   try {
-    const doc = await Project.create(req.body);
-    res.status(201).json(doc);
+    const { stockReceived, ...rest } = req.body;
+    const doc = await Project.create({ ...rest, stockReceived: [] });
+    res.status(201).json(doc.toObject());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { _id, __v, ...update } = req.body;
-    const doc = await Project.findOneAndUpdate({ id: req.params.id }, { $set: update }, { new: true }).lean();
+    const { _id, __v, stockReceived, ...update } = req.body;
+    const doc = await Project.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: update },
+      { new: true }
+    ).lean();
     if (!doc) return res.status(404).json({ error: 'Project not found' });
     res.json(doc);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -27,6 +34,75 @@ router.delete('/:id', auth, async (req, res) => {
   try {
     await Project.findOneAndDelete({ id: req.params.id });
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Stock Received sub-routes ─────────────────────────────────────────────────
+// Submissions are embedded inside the project document.
+
+// POST /api/projects/:id/stock-received  — push a new submission
+router.post('/:id/stock-received', auth, async (req, res) => {
+  try {
+    const doc = await Project.findOneAndUpdate(
+      { id: req.params.id },
+      { $push: { stockReceived: req.body } },
+      { new: true }
+    ).lean();
+    if (!doc) return res.status(404).json({ error: 'Project not found' });
+    res.status(201).json(doc);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT /api/projects/:id/stock-received/:subId  — replace a submission
+router.put('/:id/stock-received/:subId', auth, async (req, res) => {
+  try {
+    const { _id, __v, projectId, ...update } = req.body;
+    const replacement = { ...update, id: update.id || req.params.subId };
+    const doc = await Project.findOneAndUpdate(
+      { id: req.params.id, 'stockReceived.id': req.params.subId },
+      { $set: { 'stockReceived.$': replacement } },
+      { new: true }
+    ).lean();
+    if (!doc) return res.status(404).json({ error: 'Submission not found' });
+    res.json(doc);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/projects/:id/stock-received/:subId  — remove a submission
+router.delete('/:id/stock-received/:subId', auth, async (req, res) => {
+  try {
+    const doc = await Project.findOneAndUpdate(
+      { id: req.params.id },
+      { $pull: { stockReceived: { id: req.params.subId } } },
+      { new: true }
+    ).lean();
+    if (!doc) return res.status(404).json({ error: 'Project not found' });
+    res.json(doc);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/projects/:id/stock-received/:subId/approve
+router.post('/:id/stock-received/:subId/approve', auth, async (req, res) => {
+  try {
+    const { approvalItems, approvedBy } = req.body;
+    const project = await Project.findOne({ id: req.params.id });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const idx = project.stockReceived.findIndex((s) => s.id === req.params.subId);
+    if (idx === -1) return res.status(404).json({ error: 'Submission not found' });
+
+    const sub = project.stockReceived[idx];
+    sub.approvalStatus = 'approved';
+    sub.approvedAt     = new Date().toISOString();
+    sub.approvedBy     = approvedBy;
+    sub.items = (sub.items || []).map((item, i) => ({
+      ...item.toObject(),
+      userApproved: approvalItems[i]?.approved ?? false,
+      userComment:  approvalItems[i]?.comment  ?? '',
+    }));
+
+    await project.save();
+    res.json(project.toObject());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

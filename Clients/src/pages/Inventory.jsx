@@ -73,71 +73,9 @@ const Inventory = () => {
         ))}
       </div>
 
-      {/* Critical Items */}
-      {criticalItems.length > 0 && (
-        <div className="fsp-card" style={{ marginBottom: 16 }}>
-          <div className="fsp-card-header">
-            <div>
-              <div className="fsp-card-title" style={{ color: 'var(--danger)' }}>🚨 Items Needing Immediate Attention</div>
-              <div className="fsp-card-subtitle">{criticalItems.length} item{criticalItems.length !== 1 ? 's' : ''} critical or high urgency</div>
-            </div>
-          </div>
-          <div className="fsp-card-body" style={{ padding: '0 0 4px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, padding: '4px 20px 16px' }}>
-              {criticalItems.map((item) => {
-                const conf = URGENCY_CONFIG[item.urgency];
-                return (
-                  <div key={item.id} style={{ padding: '14px', borderRadius: 10, background: conf.bg, border: `1px solid ${conf.border}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 13.5 }}>{item.name}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{item.category} · {item.id}</div>
-                      </div>
-                      <span style={{ fontSize: 18, fontWeight: 800, color: conf.color }}>{item.currentStock === 0 ? '⚠️' : `${item.daysRemaining}d`}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-secondary)' }}>
-                      <span>Stock: <strong>{item.currentStock} {item.unit}</strong></span>
-                      <span>Usage: <strong>{item.dailyUsage} {item.unit}/day</strong></span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+      
 
-      {/* Charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        <div className="fsp-card">
-          <div className="fsp-card-header"><div><div className="fsp-card-title">Top Items by Daily Cost</div><div className="fsp-card-subtitle">Daily usage × unit cost</div></div></div>
-          <div className="fsp-card-body">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={topConsumers} layout="vertical" margin={{ left: 0, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${v}`} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip formatter={(v) => [`₹${v}`, 'Daily Cost']} />
-                <Bar dataKey="dailyCost" fill="#4F46E5" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-        <div className="fsp-card">
-          <div className="fsp-card-header"><div><div className="fsp-card-title">Top Items by Daily Volume</div><div className="fsp-card-subtitle">Units consumed per day</div></div></div>
-          <div className="fsp-card-body">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={topConsumers} layout="vertical" margin={{ left: 0, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip formatter={(v, _, p) => [`${v} ${p.payload.unit}`, 'Daily Usage']} />
-                <Bar dataKey="dailyUsage" fill="#10B981" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+    
 
       {/* Usage & Stock Summary Table */}
       <div className="fsp-card">

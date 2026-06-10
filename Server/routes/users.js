@@ -16,7 +16,7 @@ router.get('/', auth, async (req, res) => {
 // POST /api/users
 router.post('/', auth, async (req, res) => {
   try {
-    const { username, password, role, name, projectId, email, phone } = req.body;
+    const { username, password, role, name, projectId, email, phone, isActive } = req.body;
     const uname = username?.trim().toLowerCase();
     if (!uname || !password) return res.status(400).json({ error: 'Username and password are required.' });
 
@@ -30,6 +30,7 @@ router.post('/', auth, async (req, res) => {
       role: role || 'User', name: name?.trim() || uname,
       projectId: role === 'Admin' ? null : (projectId?.trim() || null),
       email: email?.trim() || '', phone: phone?.trim() || '',
+      isActive: isActive !== false,
       createdAt: new Date().toISOString().split('T')[0],
     });
     res.status(201).json(safeUser(user.toObject()));

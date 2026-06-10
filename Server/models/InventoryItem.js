@@ -10,6 +10,7 @@ const stockRecordSchema = new mongoose.Schema({
   time:      { type: String, default: '' },
   loggedBy:  { type: String, default: '' },
   notes:     { type: String, default: '' },
+  type:      { type: Boolean, default: true },
 }, { _id: false });
 
 const inventoryItemSchema = new mongoose.Schema({
@@ -25,6 +26,7 @@ const inventoryItemSchema = new mongoose.Schema({
   expiryDate:   { type: String, default: '' },
   supplier:     { type: String, default: '' },
   stockRecords: { type: [stockRecordSchema], default: [] },
+  active:       { type: Boolean, default: true },
 });
 
 module.exports = mongoose.model('InventoryItem', inventoryItemSchema);

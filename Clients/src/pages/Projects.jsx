@@ -1,16 +1,20 @@
 import './Projects.css';
-import React, { useState, useMemo } from 'react';
+import './AddItemModal.css';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   MdRefresh, MdWarehouse,
   MdLocationOn, MdPerson, MdPhone, MdEmail,
   MdInfo, MdCheckCircle, MdSearch,
   MdArrowBack, MdInbox, MdOutbox,
-  MdLock,
+  MdLock, MdAdd, MdEdit, MdDelete, MdClose, MdSave,
   MdKeyboardArrowDown, MdKeyboardArrowUp, MdFileDownload,
   MdPrint,
 } from 'react-icons/md';
 import { useProjects }    from '../contexts/ProjectsContext';
-import { exportSnapshot } from '../services/projectsDb';
+import { useAuth }        from '../contexts/AuthContext';
+import { exportSnapshot, nextProjectId } from '../services/projectsDb';
+import DeleteConfirmModal from './DeleteConfirmModal';
+import api from '../services/api';
 
 /* ── Constants ─────────────────────────────────────────── */
 const STATUS_STYLE = {
@@ -20,9 +24,695 @@ const STATUS_STYLE = {
 };
 
 /* ══════════════════════════════════════════════════════════
+   PROJECT MODAL  —  Add / Edit
+   ══════════════════════════════════════════════════════════ */
+const EMPTY_FORM = {
+  name: '', location: '', address: '', description: '',
+  createdAt: '', manager: '', phone: '', email: '',
+  status: 'Active',
+};
+
+const ProjectModal = ({ mode, project, onSave, onClose }) => {
+  const [form,   setForm]   = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (mode === 'edit' && project) {
+      setForm({
+        name:        project.name        || '',
+        location:    project.location    || '',
+        address:     project.address     || '',
+        description: project.description || '',
+        createdAt:   project.createdAt   || '',
+        manager:     project.manager     || '',
+        phone:       project.phone       || '',
+        email:       project.email       || '',
+        status:      project.status      || 'Active',
+      });
+    } else {
+      setForm({ ...EMPTY_FORM, createdAt: new Date().toISOString().split('T')[0] });
+    }
+    setErrors({});
+  }, [mode, project]);
+
+  const change = (field, val) => {
+    setForm((f) => ({ ...f, [field]: val }));
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
+  };
+
+  const validate = () => {
+    const errs = {};
+    if (!form.name.trim())     errs.name     = 'Project title is required';
+    if (!form.location.trim()) errs.location = 'Location is required';
+    return errs;
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    setSaving(true);
+    try { await onSave(form); }
+    finally { setSaving(false); }
+  };
+
+  const isEdit = mode === 'edit';
+
+  return (
+    <>
+      <div className="aim-backdrop" onClick={onClose} />
+      <div className="aim-modal" role="dialog" aria-modal="true" style={{ width: 660 }}>
+
+        {/* Header */}
+        <div className="aim-header">
+          <div className="aim-header-left">
+            <div className="aim-header-icon">{isEdit ? '✏️' : '🏗️'}</div>
+            <div>
+              <div className="aim-title">{isEdit ? 'Edit Project' : 'Add Project'}</div>
+              <div className="aim-subtitle">{isEdit ? `Updating: ${project?.name}` : 'Fill in the details for the new project'}</div>
+            </div>
+          </div>
+          <button className="aim-close-btn" onClick={onClose} title="Close"><MdClose /></button>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={submit}>
+          <div className="aim-body">
+
+            {/* Project Title */}
+            <div className="aim-field">
+              <label>Project Title <span className="aim-required">*</span></label>
+              <input
+                value={form.name}
+                onChange={(e) => change('name', e.target.value)}
+                placeholder="Enter project name"
+                className={errors.name ? 'aim-input-error' : ''}
+              />
+              {errors.name && <span className="aim-error-msg">{errors.name}</span>}
+            </div>
+
+            <div className="aim-form-row">
+              {/* Location */}
+              <div className="aim-field">
+                <label>Location <span className="aim-required">*</span></label>
+                <input
+                  value={form.location}
+                  onChange={(e) => change('location', e.target.value)}
+                  placeholder="City / Area"
+                  className={errors.location ? 'aim-input-error' : ''}
+                />
+                {errors.location && <span className="aim-error-msg">{errors.location}</span>}
+              </div>
+
+              {/* Date */}
+              <div className="aim-field">
+                <label>Date</label>
+                <input type="date" value={form.createdAt} onChange={(e) => change('createdAt', e.target.value)} />
+              </div>
+            </div>
+
+            <div className="aim-form-row">
+              {/* Manager */}
+              <div className="aim-field">
+                <label>Manager</label>
+                <input value={form.manager} onChange={(e) => change('manager', e.target.value)} placeholder="Manager name" />
+              </div>
+
+              {/* Contact No */}
+              <div className="aim-field">
+                <label>Contact No</label>
+                <input value={form.phone} onChange={(e) => change('phone', e.target.value)} placeholder="+91 00000 00000" />
+              </div>
+            </div>
+
+            <div className="aim-form-row">
+              {/* Email */}
+              <div className="aim-field">
+                <label>Email</label>
+                <input type="email" value={form.email} onChange={(e) => change('email', e.target.value)} placeholder="manager@example.com" />
+              </div>
+
+              {/* Status */}
+              <div className="aim-field">
+                <label>Status</label>
+                <select value={form.status} onChange={(e) => change('status', e.target.value)}>
+                  {['Active', 'Inactive', 'Under Maintenance'].map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Address */}
+            <div className="aim-field">
+              <label>Address</label>
+              <input value={form.address} onChange={(e) => change('address', e.target.value)} placeholder="Full address" />
+            </div>
+
+            {/* Description */}
+            <div className="aim-field">
+              <label>Description</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => change('description', e.target.value)}
+                placeholder="Project description…"
+                rows={3}
+                style={{ padding: '9px 12px', border: '1.5px solid var(--border-color)', borderRadius: 8, fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical', outline: 'none', transition: 'border-color 0.18s' }}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px rgba(79,70,229,0.1)'; }}
+                onBlur={(e)  => { e.target.style.borderColor = 'var(--border-color)'; e.target.style.boxShadow = 'none'; }}
+              />
+            </div>
+
+          </div>
+
+          {/* Footer */}
+          <div className="aim-footer">
+            <button type="button" className="aim-btn-cancel" onClick={onClose}>Cancel</button>
+            <button type="submit" className="aim-btn-save" disabled={saving}>
+              {saving
+                ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} /> Saving…</>
+                : <><MdSave /> {isEdit ? 'Save Changes' : 'Add Project'}</>}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+};
+
+/* ══════════════════════════════════════════════════════════
+   INVENTORY STOCK MODAL  —  select items from DB
+   ══════════════════════════════════════════════════════════ */
+const ISM_TH = {
+  padding: '10px 12px',
+  textAlign: 'left',
+  fontSize: 11,
+  fontWeight: 700,
+  color: 'var(--text-secondary)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px',
+  borderBottom: '1px solid var(--border-color)',
+  whiteSpace: 'nowrap',
+  background: 'var(--primary-pale)',
+};
+const ISM_TD = {
+  padding: '8px 12px',
+  verticalAlign: 'middle',
+  borderBottom: '1px solid var(--border-light)',
+};
+
+const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
+  const now = new Date();
+  const [date,         setDate]         = useState(now.toISOString().split('T')[0]);
+  const [time,         setTime]         = useState(now.toTimeString().slice(0, 5));
+  const [items,        setItems]        = useState([]);
+  const [loadingItems, setLoadingItems] = useState(true);
+  const [loadError,    setLoadError]    = useState('');
+  const [selections,   setSelections]   = useState({});
+  const [saving,       setSaving]       = useState(false);
+  const [submitErr,    setSubmitErr]    = useState('');
+
+  useEffect(() => {
+    api.get('/inventory')
+      .then((data) => {
+        const active = (data || []).filter((i) => i.active !== false);
+        setItems(active);
+        const sel = {};
+        active.forEach((item) => { sel[item.id] = { checked: false, qty: '', price: String(item.unitCost || 0), description: '' }; });
+        setSelections(sel);
+      })
+      .catch((err) => setLoadError(err.message || 'Failed to load inventory items'))
+      .finally(() => setLoadingItems(false));
+  }, []);
+
+  const toggle = (id) =>
+    setSelections((p) => ({ ...p, [id]: { ...p[id], checked: !p[id].checked } }));
+
+  const allChecked = items.length > 0 && items.every((i) => selections[i.id]?.checked);
+  const toggleAll  = () => {
+    const next = !allChecked;
+    setSelections((p) => {
+      const updated = { ...p };
+      items.forEach((i) => { updated[i.id] = { ...p[i.id], checked: next }; });
+      return updated;
+    });
+  };
+
+  const setQty   = (id, val) => setSelections((p) => ({ ...p, [id]: { ...p[id], qty:   val } }));
+  const setPrice = (id, val) => setSelections((p) => ({ ...p, [id]: { ...p[id], price: val } }));
+  const setDesc  = (id, val) => setSelections((p) => ({ ...p, [id]: { ...p[id], description: val } }));
+
+  const selectedItems = items.filter((i) => selections[i.id]?.checked);
+  const grandTotal = selectedItems.reduce((sum, i) => {
+    const qty   = parseFloat(selections[i.id]?.qty)   || 0;
+    const price = parseFloat(selections[i.id]?.price) || 0;
+    return sum + qty * price;
+  }, 0);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!selectedItems.length) { setSubmitErr('Please select at least one item.'); return; }
+    const bad = selectedItems.find((i) => !(parseFloat(selections[i.id]?.qty) > 0));
+    if (bad) { setSubmitErr(`Enter a valid quantity for: ${bad.name}`); return; }
+    setSubmitErr('');
+    setSaving(true);
+    try {
+      const subItems = selectedItems.map((item) => {
+        const qty  = parseFloat(selections[item.id].qty);
+        const rate = parseFloat(selections[item.id].price) || 0;
+        return {
+          itemId:   item.id,
+          itemName: item.name,
+          category: item.category,
+          quantity: qty,
+          unit:     item.unit,
+          rate,
+          total:    qty * rate,
+          notes:    selections[item.id].description || '',
+          supplier: item.supplier || '',
+        };
+      });
+      await onSave({
+        id:         `SUB-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        adminName,
+        date,
+        time,
+        totalValue: subItems.reduce((s, i) => s + i.total, 0),
+        items: subItems,
+      });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <>
+      <div className="aim-backdrop" onClick={onClose} />
+      <div className="aim-modal" role="dialog" aria-modal="true" style={{ width: 900 }}>
+
+        {/* Header */}
+        <div className="aim-header">
+          <div className="aim-header-left">
+            <div className="aim-header-icon">📦</div>
+            <div>
+              <div className="aim-title">Add Stock</div>
+              <div className="aim-subtitle">Select inventory items for: <strong>{project.name}</strong></div>
+            </div>
+          </div>
+          <button className="aim-close-btn" onClick={onClose} title="Close"><MdClose /></button>
+        </div>
+
+        <form onSubmit={submit}>
+          <div className="aim-body" style={{ padding: '16px 20px', gap: 14 }}>
+
+            {/* Meta row — 4 columns */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px 120px', gap: 12 }}>
+              <div className="aim-field">
+                <label>Project</label>
+                <input value={project.name} readOnly style={{ background: 'var(--bg-main)', color: 'var(--text-muted)', cursor: 'default' }} />
+              </div>
+              <div className="aim-field">
+                <label>Admin</label>
+                <input value={adminName} readOnly style={{ background: 'var(--bg-main)', color: 'var(--text-muted)', cursor: 'default' }} />
+              </div>
+              <div className="aim-field">
+                <label>Date</label>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </div>
+              <div className="aim-field">
+                <label>Time</label>
+                <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Items table */}
+            {loadingItems ? (
+              <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                <span style={{ display: 'inline-block', width: 18, height: 18, border: '2px solid var(--border-color)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.7s linear infinite', verticalAlign: 'middle', marginRight: 8 }} />
+                Loading inventory items…
+              </div>
+            ) : loadError ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--danger)', fontSize: 13 }}>{loadError}</div>
+            ) : items.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: 13 }}>No inventory items found.</div>
+            ) : (
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ overflowY: 'auto', maxHeight: 360 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                      <tr>
+                        <th style={{ ...ISM_TH, width: 42, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={allChecked}
+                            onChange={toggleAll}
+                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' }}
+                            title="Select / deselect all"
+                          />
+                        </th>
+                        <th style={ISM_TH}>Item List</th>
+                        <th style={{ ...ISM_TH, width: 130 }}>Quantity</th>
+                        <th style={{ ...ISM_TH, width: 115 }}>Pricing (₹)</th>
+                        <th style={{ ...ISM_TH, width: 125 }}>Total Price (₹)</th>
+                        <th style={ISM_TH}>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((item, idx) => {
+                        const sel       = selections[item.id] || {};
+                        const isChecked = !!sel.checked;
+                        const qty       = parseFloat(sel.qty)   || 0;
+                        const price     = parseFloat(sel.price) || 0;
+                        const total     = qty * price;
+                        return (
+                          <tr
+                            key={item.id}
+                            style={{
+                              background: isChecked ? 'var(--primary-pale)' : idx % 2 === 0 ? '#fff' : 'var(--bg-main)',
+                              transition: 'background 0.15s',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => toggle(item.id)}
+                          >
+                            <td style={{ ...ISM_TD, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggle(item.id)}
+                                style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' }}
+                              />
+                            </td>
+                            <td style={ISM_TD}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.3 }}>{item.name}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{item.category} · {item.unit}</div>
+                            </td>
+                            <td style={ISM_TD} onClick={(e) => e.stopPropagation()}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={sel.qty || ''}
+                                  onChange={(e) => setQty(item.id, e.target.value)}
+                                  disabled={!isChecked}
+                                  placeholder="0"
+                                  style={{
+                                    width: 72, height: 30, padding: '0 8px',
+                                    border: '1.5px solid var(--border-color)',
+                                    borderRadius: 6, fontSize: 13,
+                                    outline: 'none', fontFamily: 'inherit',
+                                    background: isChecked ? '#fff' : 'var(--bg-main)',
+                                    color: isChecked ? 'var(--text-primary)' : 'var(--text-muted)',
+                                    cursor: isChecked ? 'text' : 'not-allowed',
+                                  }}
+                                />
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{item.unit}</span>
+                              </div>
+                            </td>
+                            <td style={ISM_TD} onClick={(e) => e.stopPropagation()}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: 12.5, color: 'var(--text-muted)', flexShrink: 0 }}>₹</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={sel.price ?? (item.unitCost || 0)}
+                                  onChange={(e) => setPrice(item.id, e.target.value)}
+                                  disabled={!isChecked}
+                                  placeholder="0.00"
+                                  style={{
+                                    width: 70, height: 30, padding: '0 8px',
+                                    border: '1.5px solid var(--border-color)',
+                                    borderRadius: 6, fontSize: 13,
+                                    outline: 'none', fontFamily: 'inherit',
+                                    background: isChecked ? '#fff' : 'var(--bg-main)',
+                                    color: isChecked ? 'var(--text-primary)' : 'var(--text-muted)',
+                                    cursor: isChecked ? 'text' : 'not-allowed',
+                                  }}
+                                />
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>/{item.unit}</span>
+                              </div>
+                            </td>
+                            <td style={{ ...ISM_TD, fontWeight: 700, color: isChecked && qty > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+                              {isChecked && qty > 0
+                                ? `₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : '—'}
+                            </td>
+                            <td style={ISM_TD} onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="text"
+                                value={sel.description || ''}
+                                onChange={(e) => setDesc(item.id, e.target.value)}
+                                disabled={!isChecked}
+                                placeholder="Notes / description…"
+                                style={{
+                                  width: '100%', height: 30, padding: '0 8px',
+                                  border: '1.5px solid var(--border-color)',
+                                  borderRadius: 6, fontSize: 12.5, fontFamily: 'inherit',
+                                  outline: 'none', boxSizing: 'border-box',
+                                  background: isChecked ? '#fff' : 'var(--bg-main)',
+                                  color: isChecked ? 'var(--text-primary)' : 'var(--text-muted)',
+                                  cursor: isChecked ? 'text' : 'not-allowed',
+                                  minWidth: 130,
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {submitErr && (
+              <div style={{ color: 'var(--danger)', fontSize: 12.5, fontWeight: 600, padding: '8px 12px', background: 'var(--danger-bg)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)' }}>
+                {submitErr}
+              </div>
+            )}
+          </div>
+
+          <div className="aim-footer" style={{ justifyContent: 'space-between' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{selectedItems.length}</span>
+              {' '}item{selectedItems.length !== 1 ? 's' : ''} selected
+              {selectedItems.length > 0 && (
+                <span style={{ marginLeft: 10, fontWeight: 800, color: 'var(--success)', fontSize: 14 }}>
+                  ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="aim-btn-cancel" onClick={onClose}>Cancel</button>
+              <button
+                type="submit"
+                className="aim-btn-save"
+                disabled={saving || !selectedItems.length || loadingItems}
+              >
+                {saving
+                  ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} /> Saving…</>
+                  : <><MdSave /> Submit Stock</>}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+};
+
+/* ══════════════════════════════════════════════════════════
+   EDIT SUBMISSION MODAL  —  edit an existing stock record
+   ══════════════════════════════════════════════════════════ */
+const EditSubmissionModal = ({ submission, onSave, onClose }) => {
+  const [date,      setDate]      = useState(submission.date || '');
+  const [time,      setTime]      = useState(submission.time || '');
+  const [items,     setItems]     = useState(
+    (submission.items || []).map((it) => ({
+      ...it,
+      qty:         String(it.quantity ?? it.qty ?? ''),
+      price:       String(it.rate    ?? it.price ?? ''),
+      description: it.notes || it.description || '',
+    }))
+  );
+  const [saving,    setSaving]    = useState(false);
+  const [submitErr, setSubmitErr] = useState('');
+
+  const updateItem = (idx, field, val) =>
+    setItems((prev) => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+
+  const grandTotal = items.reduce((sum, it) => {
+    const qty   = parseFloat(it.qty)   || 0;
+    const price = parseFloat(it.price) || 0;
+    return sum + qty * price;
+  }, 0);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const bad = items.find((it) => !(parseFloat(it.qty) > 0));
+    if (bad) { setSubmitErr(`Enter a valid quantity for: ${bad.itemName}`); return; }
+    setSubmitErr('');
+    setSaving(true);
+    try {
+      const updatedItems = items.map((it) => {
+        const qty  = parseFloat(it.qty)   || 0;
+        const rate = parseFloat(it.price) || 0;
+        return { ...it, quantity: qty, rate, total: qty * rate, notes: it.description || '' };
+      });
+      await onSave({
+        ...submission,
+        date,
+        time,
+        totalValue: updatedItems.reduce((s, i) => s + i.total, 0),
+        items: updatedItems,
+      });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <>
+      <div className="aim-backdrop" onClick={onClose} />
+      <div className="aim-modal" role="dialog" aria-modal="true" style={{ width: 900 }}>
+
+        <div className="aim-header">
+          <div className="aim-header-left">
+            <div className="aim-header-icon">✏️</div>
+            <div>
+              <div className="aim-title">Edit Stock Record</div>
+              <div className="aim-subtitle">Submitted by <strong>{submission.adminName}</strong> · {submission.items?.length || 0} items</div>
+            </div>
+          </div>
+          <button className="aim-close-btn" onClick={onClose} title="Close"><MdClose /></button>
+        </div>
+
+        <form onSubmit={submit}>
+          <div className="aim-body" style={{ padding: '16px 20px', gap: 14 }}>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px 120px', gap: 12 }}>
+              <div className="aim-field">
+                <label>Submitted By</label>
+                <input value={submission.adminName || '—'} readOnly style={{ background: 'var(--bg-main)', color: 'var(--text-muted)', cursor: 'default' }} />
+              </div>
+              <div className="aim-field">
+                <label>Record ID</label>
+                <input value={submission.id || '—'} readOnly style={{ background: 'var(--bg-main)', color: 'var(--text-muted)', cursor: 'default', fontSize: 11 }} />
+              </div>
+              <div className="aim-field">
+                <label>Date</label>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </div>
+              <div className="aim-field">
+                <label>Time</label>
+                <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              </div>
+            </div>
+
+            {items.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: 13 }}>No items in this record.</div>
+            ) : (
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ overflowY: 'auto', maxHeight: 360 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                      <tr>
+                        <th style={{ ...ISM_TH, width: 36, textAlign: 'center' }}>#</th>
+                        <th style={ISM_TH}>Item List</th>
+                        <th style={{ ...ISM_TH, width: 130 }}>Quantity</th>
+                        <th style={{ ...ISM_TH, width: 115 }}>Pricing (₹)</th>
+                        <th style={{ ...ISM_TH, width: 125 }}>Total Price (₹)</th>
+                        <th style={ISM_TH}>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((it, idx) => {
+                        const qty   = parseFloat(it.qty)   || 0;
+                        const price = parseFloat(it.price) || 0;
+                        const total = qty * price;
+                        return (
+                          <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : 'var(--bg-main)' }}>
+                            <td style={{ ...ISM_TD, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>{idx + 1}</td>
+                            <td style={ISM_TD}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.3 }}>{it.itemName}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{it.category} · {it.unit}</div>
+                            </td>
+                            <td style={ISM_TD}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <input
+                                  type="number" min="0" step="any"
+                                  value={it.qty}
+                                  onChange={(e) => updateItem(idx, 'qty', e.target.value)}
+                                  style={{ width: 72, height: 30, padding: '0 8px', border: '1.5px solid var(--border-color)', borderRadius: 6, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
+                                />
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{it.unit}</span>
+                              </div>
+                            </td>
+                            <td style={ISM_TD}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: 12.5, color: 'var(--text-muted)', flexShrink: 0 }}>₹</span>
+                                <input
+                                  type="number" min="0" step="any"
+                                  value={it.price}
+                                  onChange={(e) => updateItem(idx, 'price', e.target.value)}
+                                  style={{ width: 70, height: 30, padding: '0 8px', border: '1.5px solid var(--border-color)', borderRadius: 6, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
+                                />
+                              </div>
+                            </td>
+                            <td style={{ ...ISM_TD, fontWeight: 700, color: qty > 0 && price > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+                              {qty > 0 && price > 0
+                                ? `₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : '—'}
+                            </td>
+                            <td style={ISM_TD}>
+                              <input
+                                type="text"
+                                value={it.description}
+                                onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                                placeholder="Notes / description…"
+                                style={{ width: '100%', height: 30, padding: '0 8px', border: '1.5px solid var(--border-color)', borderRadius: 6, fontSize: 12.5, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', minWidth: 130 }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {submitErr && (
+              <div style={{ color: 'var(--danger)', fontSize: 12.5, fontWeight: 600, padding: '8px 12px', background: 'var(--danger-bg)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)' }}>
+                {submitErr}
+              </div>
+            )}
+          </div>
+
+          <div className="aim-footer" style={{ justifyContent: 'space-between' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{items.length}</span> item{items.length !== 1 ? 's' : ''}
+              {items.length > 0 && (
+                <span style={{ marginLeft: 10, fontWeight: 800, color: 'var(--success)', fontSize: 14 }}>
+                  ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="aim-btn-cancel" onClick={onClose}>Cancel</button>
+              <button type="submit" className="aim-btn-save" disabled={saving || items.length === 0}>
+                {saving
+                  ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} /> Saving…</>
+                  : <><MdSave /> Save Changes</>}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+};
+
+/* ══════════════════════════════════════════════════════════
    PROJECT DETAIL  —  info card + two stock tabs (read-only)
    ══════════════════════════════════════════════════════════ */
-const ProjectDetail = ({ project, onBack, stockReceived, stockUsed }) => {
+const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, onEditSubmission, onDeleteSubmission }) => {
   const [tab, setTab]               = useState('received');
   const [expandedIds, setExpandedIds] = useState(new Set());
 
@@ -194,6 +884,11 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed }) => {
             <p style={{ margin: 0 }}>{project.id} · {project.location}</p>
           </div>
         </div>
+        <div className="page-header-actions">
+          <button className="btn-primary-fsp" onClick={onAddStock}>
+            <MdAdd /> Add Stock
+          </button>
+        </div>
       </div>
 
       {/* ── Project Info Card ── */}
@@ -329,6 +1024,25 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed }) => {
                         <button className="btn-icon-sm" onClick={() => printInvoice(sub)} title="Print Invoice" style={{ color: 'var(--primary)' }}>
                           <MdPrint />
                         </button>
+                        {sub.approvalStatus !== 'approved' && (
+                          <>
+                            <button
+                              className="btn-icon-sm"
+                              onClick={() => onEditSubmission && onEditSubmission(sub)}
+                              title="Edit record"
+                              style={{ color: 'var(--warning)' }}
+                            >
+                              <MdEdit />
+                            </button>
+                            <button
+                              className="btn-icon-sm danger"
+                              onClick={() => onDeleteSubmission && onDeleteSubmission(sub)}
+                              title="Delete record"
+                            >
+                              <MdDelete />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -488,11 +1202,58 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed }) => {
    PROJECTS  —  list view
    ══════════════════════════════════════════════════════════ */
 const Projects = () => {
-  const { projects, stockReceived, stockUsed } = useProjects();
+  const { projects, stockReceived, stockUsed, addProject, updateProject, deleteProject, addStockReceived, updateStockReceived, deleteStockReceived } = useProjects();
+  const { user } = useAuth();
 
-  const [search,         setSearch]         = useState('');
-  const [statusFilter,   setStatusFilter]   = useState('All');
+  const [search,          setSearch]          = useState('');
+  const [statusFilter,    setStatusFilter]    = useState('All');
   const [selectedProject, setSelectedProject] = useState(null);
+
+  const [modalOpen,    setModalOpen]    = useState(false);
+  const [modalMode,    setModalMode]    = useState('add');
+  const [modalProject, setModalProject] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const [addStockProject,  setAddStockProject]  = useState(null);
+  const [editSubmission,   setEditSubmission]   = useState(null); // { projectId, sub }
+
+  const openAdd  = ()        => { setModalMode('add');  setModalProject(null);    setModalOpen(true); };
+  const openEdit = (proj, e) => { e.stopPropagation();  setModalMode('edit'); setModalProject(proj); setModalOpen(true); };
+  const closeModal = ()      => setModalOpen(false);
+
+  const handleSave = async (form) => {
+    if (modalMode === 'add') {
+      await addProject({ ...form, id: nextProjectId() });
+    } else {
+      await updateProject(modalProject.id, form);
+    }
+    closeModal();
+  };
+
+  const handleDelete = (proj, e) => {
+    e.stopPropagation();
+    setDeleteConfirm({
+      title:   'Delete Project',
+      message: `"${proj.name}" and all its associated stock data will be permanently removed.`,
+      onConfirm: async () => { await deleteProject(proj.id); },
+    });
+  };
+
+  const handleToggleActive = async (proj, e) => {
+    e.stopPropagation();
+    const newStatus = proj.status === 'Active' ? 'Inactive' : 'Active';
+    await updateProject(proj.id, { ...proj, status: newStatus });
+  };
+
+  const handleAddStock = async (submission) => {
+    await addStockReceived(addStockProject.id, submission);
+    setAddStockProject(null);
+  };
+
+  const handleUpdateSubmission = async (updatedData) => {
+    await updateStockReceived(editSubmission.projectId, editSubmission.sub.id, updatedData);
+    setEditSubmission(null);
+  };
 
   const summary = useMemo(() => {
     let active = 0, inactive = 0, maintenance = 0;
@@ -529,6 +1290,13 @@ const Projects = () => {
           onBack={() => setSelectedProject(null)}
           stockReceived={stockReceived[viewingProject.id] || []}
           stockUsed={stockUsed[viewingProject.id] || []}
+          onAddStock={() => setAddStockProject(viewingProject)}
+          onEditSubmission={(sub) => setEditSubmission({ projectId: viewingProject.id, sub })}
+          onDeleteSubmission={(sub) => setDeleteConfirm({
+            title:   'Delete Stock Record',
+            message: `Record from ${sub.date} with ${sub.items?.length || 0} items will be permanently removed.`,
+            onConfirm: async () => { await deleteStockReceived(viewingProject.id, sub.id); },
+          })}
         />
       ) : (
         <div>
@@ -541,6 +1309,9 @@ const Projects = () => {
             <div className="page-header-actions">
               <button className="btn-secondary-fsp" onClick={exportSnapshot} title="Download full database as JSON">
                 <MdFileDownload /> Export JSON
+              </button>
+              <button className="btn-primary-fsp" onClick={openAdd}>
+                <MdAdd /> Add Project
               </button>
             </div>
           </div>
@@ -604,19 +1375,21 @@ const Projects = () => {
                         <th>Contact</th>
                         <th>Status</th>
                         <th>Created</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filtered.length === 0 ? (
-                        <tr><td colSpan={7} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>No projects match your search.</td></tr>
+                        <tr><td colSpan={8} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>No projects match your search.</td></tr>
                       ) : (
                         filtered.map((proj) => {
-                          const sc = STATUS_STYLE[proj.status] || STATUS_STYLE.Active;
+                          const sc       = STATUS_STYLE[proj.status] || STATUS_STYLE.Active;
+                          const isInactive = proj.status === 'Inactive';
                           return (
                             <tr
                               key={proj.id}
                               className="clickable-row"
-                              style={{ cursor: 'pointer' }}
+                              style={{ cursor: 'pointer', opacity: isInactive ? 0.6 : 1, background: isInactive ? '#F9FAFB' : undefined, transition: 'opacity 0.2s' }}
                               onClick={() => setSelectedProject(proj)}
                             >
                               <td>
@@ -658,6 +1431,53 @@ const Projects = () => {
                                 </span>
                               </td>
                               <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{proj.createdAt || '—'}</td>
+                              <td onClick={(e) => e.stopPropagation()}>
+                                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                                  {/* Add Stock */}
+                                  <button
+                                    className="btn-icon-sm"
+                                    onClick={() => setAddStockProject(proj)}
+                                    title="Add Stock"
+                                    style={{ color: 'var(--primary)' }}
+                                  >
+                                    <MdAdd />
+                                  </button>
+                                  {/* Active / Inactive toggle */}
+                                  <button
+                                    onClick={(e) => handleToggleActive(proj, e)}
+                                    title={isInactive ? 'Activate project' : 'Deactivate project'}
+                                    style={{
+                                      height: 27, padding: '0 9px', borderRadius: 7,
+                                      border: `1.5px solid ${isInactive ? 'rgba(156,163,175,0.4)' : 'rgba(16,185,129,0.35)'}`,
+                                      background: isInactive ? '#F3F4F6' : 'var(--success-bg, #ECFDF5)',
+                                      color: isInactive ? '#6B7280' : 'var(--success, #10B981)',
+                                      fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                                      display: 'flex', alignItems: 'center', gap: 5,
+                                      transition: 'all 0.18s', whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: isInactive ? '#9CA3AF' : '#10B981', display: 'inline-block', flexShrink: 0 }} />
+                                    {isInactive ? 'Inactive' : 'Active'}
+                                  </button>
+                                  {/* Edit */}
+                                  <button
+                                    className="btn-icon-sm"
+                                    onClick={(e) => openEdit(proj, e)}
+                                    title="Edit project"
+                                    style={{ color: 'var(--warning)' }}
+                                  >
+                                    <MdEdit />
+                                  </button>
+                                  {/* Delete */}
+                                  <button
+                                    className="btn-icon-sm danger"
+                                    onClick={(e) => handleDelete(proj, e)}
+                                    title="Delete project"
+                                  >
+                                    <MdDelete />
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
                           );
                         })
@@ -674,6 +1494,45 @@ const Projects = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Add / Edit Modal */}
+      {modalOpen && (
+        <ProjectModal
+          mode={modalMode}
+          project={modalProject}
+          onSave={handleSave}
+          onClose={closeModal}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <DeleteConfirmModal
+          title={deleteConfirm.title}
+          message={deleteConfirm.message}
+          onConfirm={deleteConfirm.onConfirm}
+          onClose={() => setDeleteConfirm(null)}
+        />
+      )}
+
+      {/* Add Stock Modal */}
+      {addStockProject && (
+        <InventoryStockModal
+          project={addStockProject}
+          adminName={user?.name || user?.username || user?.email || 'Admin'}
+          onSave={handleAddStock}
+          onClose={() => setAddStockProject(null)}
+        />
+      )}
+
+      {/* Edit Submission Modal */}
+      {editSubmission && (
+        <EditSubmissionModal
+          submission={editSubmission.sub}
+          onSave={handleUpdateSubmission}
+          onClose={() => setEditSubmission(null)}
+        />
       )}
     </>
   );

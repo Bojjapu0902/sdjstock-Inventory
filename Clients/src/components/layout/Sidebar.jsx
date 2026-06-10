@@ -17,21 +17,21 @@ const Sidebar = ({ collapsed, onToggle, mobileVisible, onMobileClose }) => {
     {
       section: 'Main',
       links: [
-        { to: '/inventory',     icon: <MdInventory />,       label: 'Inventory',       badge: '5' },
+        { to: '/inventory',     icon: <MdInventory />,       label: 'Inventory',       badge: null },
         { to: '/add-items',     icon: <MdPlaylistAdd />,     label: 'Add Items',       badge: null },
-        { to: '/stock-update',  icon: <MdSystemUpdateAlt />, label: 'Update Stock',    badge: null },
-        { to: '/orders',        icon: <MdShoppingCart />,    label: 'Purchase Orders', badge: null },
+        // { to: '/stock-update',  icon: <MdSystemUpdateAlt />, label: 'Update Stock',    badge: null },
+        // { to: '/orders',        icon: <MdShoppingCart />,    label: 'Purchase Orders', badge: null },
         { to: '/suppliers',     icon: <MdPeople />,          label: 'Suppliers',       badge: null },
         { to: '/projects',      icon: <MdWarehouse />,       label: 'Projects',        badge: null },
-        { to: '/wastage',       icon: <MdDeleteSweep />,     label: 'Wastage',         badge: null },
+        // { to: '/wastage',       icon: <MdDeleteSweep />,     label: 'Wastage',         badge: null },
       ],
     },
-    {
-      section: 'Analytics',
-      links: [
-        { to: '/reports', icon: <MdBarChart />, label: 'Reports', badge: null },
-      ],
-    },
+    // {
+    //   section: 'Analytics',
+    //   links: [
+    //     { to: '/reports', icon: <MdBarChart />, label: 'Reports', badge: null },
+    //   ],
+    // },
     {
       section: 'System',
       links: [

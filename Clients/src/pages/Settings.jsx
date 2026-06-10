@@ -1,6 +1,20 @@
 ﻿import './Settings.css';
 import React, { useState } from 'react';
-import { MdSave, MdBusiness, MdNotifications, MdSecurity, MdStorage } from 'react-icons/md';
+import { MdSave, MdBusiness, MdNotifications, MdSecurity, MdStorage, MdAccessTime } from 'react-icons/md';
+
+const STORAGE_KEY = 'sdjstock_idle_timeout';
+const TIMEOUT_OPTIONS = [5, 10, 15, 30, 60];
+
+function readIdleSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      return { enabled: Boolean(p.enabled), minutes: Number(p.minutes) || 10 };
+    }
+  } catch {}
+  return { enabled: true, minutes: 10 };
+}
 
 const SettingsSection = ({ icon, title, children }) => (
   <div className="fsp-card" style={{ marginBottom: 16 }}>
@@ -40,11 +54,14 @@ const ToggleSwitch = ({ checked, onChange, label, desc }) => (
 );
 
 const Settings = () => {
-  const [biz, setBiz] = useState({ name: 'SDJ MARINE PVT. LTD Demo', email: 'admin@foodstock.io', currency: 'INR', timezone: 'Asia/Kolkata' });
+  const [biz,    setBiz]    = useState({ name: 'SDJ MARINE PVT. LTD Demo', email: 'admin@foodstock.io', currency: 'INR', timezone: 'Asia/Kolkata' });
   const [notifs, setNotifs] = useState({ lowStock: true, expiry: true, po: true, wastage: false });
-  const [saved, setSaved] = useState(false);
+  const [idle,   setIdle]   = useState(readIdleSettings);
+  const [saved,  setSaved]  = useState(false);
 
   const handleSave = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(idle));
+    window.dispatchEvent(new CustomEvent('idle-settings-changed'));
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -143,6 +160,49 @@ const Settings = () => {
               <button className="btn-secondary-fsp" style={{ width: 'fit-content' }}>Update Password</button>
             </div>
           </div>
+        </SettingsSection>
+
+        <SettingsSection icon={<MdAccessTime />} title="Session Timeout">
+          <ToggleSwitch
+            checked={idle.enabled}
+            onChange={() => setIdle(s => ({ ...s, enabled: !s.enabled }))}
+            label="Auto Logout on Inactivity"
+            desc="Automatically log out when there is no admin activity for the configured duration"
+          />
+
+          {idle.enabled && (
+            <div style={{ paddingTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px', alignItems: 'end' }}>
+              <div>
+                <label className="fsp-label">Timeout Duration</label>
+                <select
+                  className="fsp-select"
+                  value={idle.minutes}
+                  onChange={e => setIdle(s => ({ ...s, minutes: Number(e.target.value) }))}
+                >
+                  {TIMEOUT_OPTIONS.map(m => (
+                    <option key={m} value={m}>{m} minute{m !== 1 ? 's' : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{
+                padding: '10px 14px', borderRadius: 8,
+                background: 'var(--primary-pale)', border: '1px solid rgba(79,70,229,0.15)',
+                fontSize: 12.5, color: 'var(--primary)', fontWeight: 500, lineHeight: 1.5,
+              }}>
+                A 60-second warning will appear before logout. Any activity resets the timer.
+              </div>
+            </div>
+          )}
+
+          {!idle.enabled && (
+            <div style={{
+              marginTop: 12, padding: '10px 14px', borderRadius: 8,
+              background: '#F8FAFC', border: '1px solid var(--border-light)',
+              fontSize: 12.5, color: 'var(--text-muted)',
+            }}>
+              Auto logout is disabled. Sessions will remain active until manual logout.
+            </div>
+          )}
         </SettingsSection>
       </div>
     </div>

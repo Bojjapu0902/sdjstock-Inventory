@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import {
   getProjects, addProject, updateProject, deleteProject,
-  getAllStockReceived, addStockReceived, updateStockReceived,
+  addStockReceived, updateStockReceived,
   deleteStockReceived, approveSubmission,
   getAllStockUsed, addStockUsed, deleteStockUsed,
-  clearProjectStockReceived, clearProjectStockUsed,
+  clearProjectStockUsed,
 } from '../services/projectsDb';
 import {
   getUsers, deleteProjectUser, createUser, deleteUser,
@@ -19,17 +19,19 @@ export function ProjectsProvider({ children }) {
   const [stockUsed,     setStockUsed]     = useState({});
   const [loading,       setLoading]       = useState(true);
 
-  // Load all data on mount
+  // Load all data on mount.
+  // stockReceived is embedded in each project document — no separate fetch needed.
   useEffect(() => {
     Promise.all([
       getProjects(),
       getUsers(),
-      getAllStockReceived(),
       getAllStockUsed(),
-    ]).then(([p, u, sr, su]) => {
+    ]).then(([p, u, su]) => {
+      const srMap = {};
+      p.forEach((proj) => { srMap[proj.id] = proj.stockReceived || []; });
       setProjects(p);
       setUsers(u);
-      setStockReceived(sr);
+      setStockReceived(srMap);
       setStockUsed(su);
     }).catch(console.error)
       .finally(() => setLoading(false));
@@ -51,13 +53,11 @@ export function ProjectsProvider({ children }) {
   const deleteProjectFn = useCallback(async (id) => {
     await deleteProject([], id);
     await deleteProjectUser([], id);
-    const [sr, su] = await Promise.all([
-      clearProjectStockReceived({}, id),
-      clearProjectStockUsed({}, id),
-    ]);
-    setProjects((prev)      => prev.filter((p) => p.id !== id));
-    setUsers((prev)         => prev.filter((u) => u.projectId !== id));
-    setStockReceived(sr);
+    // stockReceived is embedded — deleting the project removes it automatically.
+    const su = await clearProjectStockUsed({}, id);
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    setUsers((prev)    => prev.filter((u) => u.projectId !== id));
+    setStockReceived((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setStockUsed(su);
   }, []);
 

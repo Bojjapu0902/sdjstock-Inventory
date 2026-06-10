@@ -95,6 +95,20 @@ router.put('/:id/stock-records/:recordId', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// PATCH /api/inventory/:id/stock-records/:recordId/type  — set type (true=visible, false=hidden)
+router.patch('/:id/stock-records/:recordId/type', auth, async (req, res) => {
+  try {
+    const { type } = req.body;
+    const item = await Item.findOneAndUpdate(
+      { id: req.params.id, 'stockRecords.id': req.params.recordId },
+      { $set: { 'stockRecords.$.type': !!type } },
+      { new: true }
+    ).lean();
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+    res.json(item);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // DELETE /api/inventory/:id/stock-records/:recordId  — pull record + decrement currentStock
 router.delete('/:id/stock-records/:recordId', auth, async (req, res) => {
   try {

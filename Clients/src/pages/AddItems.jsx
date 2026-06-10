@@ -7,6 +7,7 @@ import {
   MdLocationOn, MdCategory, MdCalendarToday, MdPerson,
   MdAttachMoney, MdInfo,
   MdKeyboardArrowDown, MdAdd, MdEdit, MdDelete,
+  MdPrint, MdEmail,
 } from 'react-icons/md';
 import AddItemModal from './AddItemModal';
 import AddStockModal from './AddStockModal';
@@ -349,6 +350,90 @@ const ItemDrawer = ({ item, onClose }) => {
 };
 
 
+/* ── Stock-record action helpers ───────────────────── */
+const fmtTotal = (qty, rate) =>
+  (qty * rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const handlePrintRecord = (rec, item) => {
+  const win = window.open('', '_blank', 'width=620,height=560');
+  win.document.write(`<!DOCTYPE html><html><head><title>Stock Record — ${item.name}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;padding:36px 40px;color:#111;background:#fff}
+    .brand{font-size:11px;font-weight:700;letter-spacing:1px;color:#4F46E5;text-transform:uppercase;margin-bottom:18px}
+    h2{font-size:20px;font-weight:800;color:#1E1B4B;margin-bottom:3px}
+    .sub{font-size:12px;color:#888;margin-bottom:24px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    tr{border-bottom:1px solid #eee}
+    td{padding:10px 14px;font-size:13.5px}
+    td:first-child{color:#666;width:170px;font-weight:600}
+    td:last-child{font-weight:600;color:#111}
+    .total td:last-child{color:#4F46E5;font-size:15px}
+    .footer{margin-top:28px;font-size:11px;color:#aaa;border-top:1px solid #eee;padding-top:12px}
+    @media print{body{padding:20px}}
+  </style></head><body>
+  <div class="brand">SDJ Stock — Inventory</div>
+  <h2>${item.name}</h2>
+  <div class="sub">${item.id} &nbsp;·&nbsp; ${item.category}</div>
+  <table>
+    <tr><td>Date &amp; Time</td><td>${rec.date}${rec.time ? ' &nbsp;·&nbsp; ' + rec.time : ''}</td></tr>
+    <tr><td>Quantity Received</td><td>+${rec.qty} ${item.unit}</td></tr>
+    <tr><td>Unit Price</td><td>&#8377;${rec.rate} / ${item.unit}</td></tr>
+    <tr><td>Supplier</td><td>${rec.supplier || '—'}</td></tr>
+    ${rec.loggedBy ? `<tr><td>Logged By</td><td>${rec.loggedBy}</td></tr>` : ''}
+    ${rec.notes    ? `<tr><td>Notes</td><td>${rec.notes}</td></tr>` : ''}
+    <tr class="total"><td>Total Cost</td><td>&#8377;${fmtTotal(rec.qty, rec.rate)}</td></tr>
+  </table>
+  <div class="footer">Printed on ${new Date().toLocaleString('en-IN')}</div>
+  </body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 300);
+};
+
+const handleMailRecord = (rec, item) => {
+  const total = fmtTotal(rec.qty, rec.rate);
+  const subject = encodeURIComponent(`Stock Record — ${item.name} (${rec.date})`);
+  const body = encodeURIComponent(
+    `Stock Record Details\n${'─'.repeat(30)}\n` +
+    `Item       : ${item.name} (${item.id})\n` +
+    `Category   : ${item.category}\n` +
+    `Date       : ${rec.date}${rec.time ? ' · ' + rec.time : ''}\n` +
+    `Quantity   : +${rec.qty} ${item.unit}\n` +
+    `Unit Price : ₹${rec.rate} / ${item.unit}\n` +
+    `Total Cost : ₹${total}\n` +
+    `Supplier   : ${rec.supplier || '—'}\n` +
+    (rec.loggedBy ? `Logged By  : ${rec.loggedBy}\n` : '') +
+    (rec.notes    ? `Notes      : ${rec.notes}\n`    : '')
+  );
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+};
+
+const handleDownloadRecord = (rec, item) => {
+  const rows = [
+    ['Field', 'Value'],
+    ['Item',           item.name],
+    ['Item ID',        item.id],
+    ['Category',       item.category],
+    ['Date',           rec.date],
+    ['Time',           rec.time || ''],
+    ['Quantity',       `${rec.qty} ${item.unit}`],
+    ['Unit Price (INR)', rec.rate],
+    ['Total Cost (INR)', (rec.qty * rec.rate).toFixed(2)],
+    ['Supplier',       rec.supplier || ''],
+    ['Logged By',      rec.loggedBy || ''],
+    ['Notes',          rec.notes    || ''],
+  ];
+  const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href: url, download: `stock-record-${item.id}-${rec.date}.csv`,
+  });
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 /* ══════════════════════════════════════════════════════
    ADD ITEMS PAGE  —  read-only catalog view
    ══════════════════════════════════════════════════════ */
@@ -426,6 +511,12 @@ const AddItems = () => {
     setStockEditRecord(null);
   };
 
+  const handleToggleRecordActive = async (rec, rowItem) => {
+    const newType = rec.type === false ? true : false;
+    const updated = await api.patch(`/inventory/${rowItem.id}/stock-records/${rec.id}/type`, { type: newType });
+    syncItem(updated);
+  };
+
   const handleDeleteStockRecord = (rec, rowItem) => {
     setDeleteConfirm({
       title:   'Delete Stock Record',
@@ -435,6 +526,12 @@ const AddItems = () => {
         syncItem(updated);
       },
     });
+  };
+
+  const handleToggleActive = async (item) => {
+    const newActive = item.active === false ? true : false;
+    const updated = await api.put(`/inventory/${item.id}`, { active: newActive });
+    setBaseItems((prev) => prev.map((i) => i.id === item.id ? { ...i, active: updated.active ?? newActive } : i));
   };
 
   useEffect(() => {
@@ -552,9 +649,11 @@ const AddItems = () => {
                   style={{
                     marginBottom: 8,
                     borderRadius: 12,
-                    border: `1.5px solid ${isOpen ? 'var(--primary)' : lastUp ? 'rgba(16,185,129,0.35)' : 'var(--border-color)'}`,
+                    border: `1.5px solid ${row.active === false ? 'rgba(156,163,175,0.35)' : isOpen ? 'var(--primary)' : lastUp ? 'rgba(16,185,129,0.35)' : 'var(--border-color)'}`,
                     overflow: 'hidden',
-                    transition: 'border-color 0.2s',
+                    opacity: row.active === false ? 0.65 : 1,
+                    background: row.active === false ? '#F3F4F6' : 'transparent',
+                    transition: 'border-color 0.2s, opacity 0.2s',
                   }}
                 >
                   {/* ── Header (always visible) ── */}
@@ -563,7 +662,7 @@ const AddItems = () => {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12,
                       padding: '11px 16px', cursor: 'pointer',
-                      background: isOpen ? 'var(--primary-pale)' : '#fff',
+                      background: row.active === false ? '#F3F4F6' : isOpen ? 'var(--primary-pale)' : '#fff',
                       transition: 'background 0.2s',
                     }}
                   >
@@ -619,6 +718,28 @@ const AddItems = () => {
                       >
                         <MdDelete />
                       </button>
+                      {/* Active / Inactive toggle */}
+                      <button
+                        onClick={() => handleToggleActive(row)}
+                        title={row.active === false ? 'Activate item' : 'Deactivate item'}
+                        style={{
+                          height: 30, padding: '0 10px', borderRadius: 7,
+                          border: `1.5px solid ${row.active === false ? 'rgba(156,163,175,0.4)' : 'rgba(16,185,129,0.35)'}`,
+                          background: row.active === false ? '#F3F4F6' : 'var(--success-bg, #ECFDF5)',
+                          color: row.active === false ? '#6B7280' : 'var(--success, #10B981)',
+                          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 5,
+                          transition: 'all 0.18s',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: row.active === false ? '#9CA3AF' : '#10B981',
+                          display: 'inline-block', flexShrink: 0,
+                        }} />
+                        {row.active === false ? 'Inactive' : 'Active'}
+                      </button>
                       <button
                         onClick={() => setStockItem(row)}
                         title="Add stock"
@@ -647,7 +768,7 @@ const AddItems = () => {
 
                   {/* ── Expanded body ── */}
                   {isOpen && (
-                    <div style={{ borderTop: '1px solid var(--border-light)', padding: '14px 18px', background: '#F8FAFF' }}>
+                    <div style={{ borderTop: '1px solid var(--border-light)', padding: '14px 18px', background: row.active === false ? '#EBEBEB' : '#F8FAFF' }}>
                       {/* Urgency banner */}
                       <span style={{ padding: '4px 11px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: conf.bg, color: conf.color, border: `1px solid ${conf.border}` }}>
                         {conf.icon} {row.urgency.charAt(0).toUpperCase() + row.urgency.slice(1)} — {conf.label}
@@ -664,7 +785,7 @@ const AddItems = () => {
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             {rowHistory.map((rec, i) => (
-                              <div key={rec.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: '#fff', borderRadius: 8, border: '1px solid var(--border-light)', fontSize: 12.5 }}>
+                              <div key={rec.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: rec.type === false ? '#F3F4F6' : row.active === false ? '#F3F4F6' : '#fff', borderRadius: 8, border: `1px solid ${rec.type === false ? 'rgba(156,163,175,0.3)' : 'var(--border-light)'}`, fontSize: 12.5, opacity: rec.type === false ? 0.65 : 1, transition: 'opacity 0.2s, background 0.2s' }}>
                                 {/* Index badge */}
                                 <span style={{ width: 20, height: 20, borderRadius: 6, background: 'var(--primary-pale)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>{rowHistory.length - i}</span>
                                 {/* Date + Time */}
@@ -682,7 +803,48 @@ const AddItems = () => {
                                 {/* Spacer */}
                                 <div style={{ flex: 1 }} />
                                 {/* Record actions */}
-                                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                                  {/* Record active/inactive toggle */}
+                                  <button
+                                    onClick={() => handleToggleRecordActive(rec, row)}
+                                    title={rec.type === false ? 'Activate record' : 'Deactivate record'}
+                                    style={{
+                                      height: 22, padding: '0 8px', borderRadius: 6,
+                                      border: `1px solid ${rec.type === false ? 'rgba(156,163,175,0.4)' : 'rgba(16,185,129,0.35)'}`,
+                                      background: rec.type === false ? '#F3F4F6' : 'var(--success-bg, #ECFDF5)',
+                                      color: rec.type === false ? '#6B7280' : 'var(--success, #10B981)',
+                                      fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                      display: 'flex', alignItems: 'center', gap: 4,
+                                      transition: 'all 0.18s', whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: rec.type === false ? '#9CA3AF' : '#10B981', display: 'inline-block', flexShrink: 0 }} />
+                                    {rec.type === false ? 'Inactive' : 'Active'}
+                                  </button>
+                                  <button
+                                    className="btn-icon-sm"
+                                    title="Print record"
+                                    onClick={() => handlePrintRecord(rec, row)}
+                                    style={{ width: 26, height: 26, fontSize: 13, color: 'var(--text-secondary)' }}
+                                  >
+                                    <MdPrint />
+                                  </button>
+                                  <button
+                                    className="btn-icon-sm"
+                                    title="Send by email"
+                                    onClick={() => handleMailRecord(rec, row)}
+                                    style={{ width: 26, height: 26, fontSize: 13, color: '#3B82F6' }}
+                                  >
+                                    <MdEmail />
+                                  </button>
+                                  <button
+                                    className="btn-icon-sm"
+                                    title="Download as CSV"
+                                    onClick={() => handleDownloadRecord(rec, row)}
+                                    style={{ width: 26, height: 26, fontSize: 13, color: 'var(--success)' }}
+                                  >
+                                    <MdFileDownload />
+                                  </button>
                                   <button
                                     className="btn-icon-sm"
                                     title="Edit record"
