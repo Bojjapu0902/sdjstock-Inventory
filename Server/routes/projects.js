@@ -3,13 +3,6 @@ const auth    = require('../middleware/auth');
 const Project = require('../models/Project');
 const Item    = require('../models/InventoryItem');
 
-function recomputeStock(records) {
-  return (records || []).reduce((total, r) => {
-    const qty = Number(r.qty) || 0;
-    return r.direction === 'out' ? total - qty : total + qty;
-  }, 0);
-}
-
 // ── Project CRUD ─────────────────────────────────────────────────────────────
 
 router.get('/', auth, async (req, res) => {
@@ -45,82 +38,206 @@ router.delete('/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Stock Received sub-routes ─────────────────────────────────────────────────
-// Submissions are embedded inside the project document.
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// POST /api/projects/:id/stock-received  — push a new submission
+/** Add an 'out' stock record and decrement currentStock. */
+async function deductInventoryItem(inv, qty, rate, submissionId, projectId, projectName, adminName, date, time) {
+  inv.stockRecords.push({
+    id:          `OUT-${submissionId}-${inv.id}`,
+    qty,
+    rate:        rate || 0,
+    supplier:    '',
+    timestamp:   new Date().toISOString(),
+    date,
+    time,
+    loggedBy:    adminName || '',
+    notes:       `Assigned to project: ${projectName} | Sub: ${submissionId}`,
+    direction:   'out',
+    projectId,
+    projectName,
+  });
+  inv.currentStock = Math.max(0, (inv.currentStock || 0) - qty);
+  await inv.save();
+}
+
+/** Remove the matching 'out' record and restore qty to currentStock. */
+async function restoreInventoryItem(inv, submissionId, fallbackQty) {
+  const recordId     = `OUT-${submissionId}-${inv.id}`;
+  const record       = (inv.stockRecords || []).find((r) => r.id === recordId);
+  const qtyToRestore = record ? record.qty : fallbackQty;
+  inv.stockRecords   = (inv.stockRecords || []).filter((r) => r.id !== recordId);
+  inv.currentStock   = (inv.currentStock || 0) + qtyToRestore;
+  await inv.save();
+}
+
+// ── Stock Received sub-routes ─────────────────────────────────────────────────
+
+// POST /api/projects/:id/stock-received
+// Check stock availability → push submission → deduct inventory.
 router.post('/:id/stock-received', auth, async (req, res) => {
   try {
-    const { adminName = '', date = '', time = '', items = [] } = req.body;
+    const submission = req.body;
+    const reqItems   = submission.items || [];
 
-    // Stock availability check — reject if any item doesn't have enough currentStock
-    const stockDocs = await Promise.all(items.map((it) => Item.findOne({ id: it.itemId }).lean()));
-    const insufficient = items.find((it, i) => {
-      const available = stockDocs[i]?.currentStock ?? 0;
-      return Number(it.quantity) > available;
-    });
-    if (insufficient) {
-      const doc = stockDocs[items.indexOf(insufficient)];
-      return res.status(400).json({
-        error: `Insufficient stock for "${insufficient.itemName}" — available: ${doc?.currentStock ?? 0} ${insufficient.unit || ''}, requested: ${insufficient.quantity}`,
-      });
+    // 1. Availability check
+    const insufficient = [];
+    const invCache = [];
+
+    for (const it of reqItems) {
+      const inv = await Item.findOne({ id: it.itemId });
+      if (!inv) continue;
+      invCache.push({ inv, it });
+      if ((inv.currentStock || 0) < it.quantity) {
+        insufficient.push({
+          itemId:    it.itemId,
+          itemName:  it.itemName,
+          requested: it.quantity,
+          available: inv.currentStock || 0,
+          unit:      it.unit,
+        });
+      }
     }
 
-    const doc = await Project.findOneAndUpdate(
-      { id: req.params.id },
-      { $push: { stockReceived: req.body } },
-      { new: true }
-    ).lean();
-    if (!doc) return res.status(404).json({ error: 'Project not found' });
-    const ts = date && time ? `${date}T${time}:00` : new Date().toISOString();
-    await Promise.all(items.map(async (it, idx) => {
-      const existing = stockDocs[idx];
-      if (!existing) return;
-      const outRecord = {
-        id:          `OUT-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
-        qty:         Number(it.quantity),
-        rate:        0,
-        direction:   'out',
-        projectId:   doc.id,
-        projectName: doc.name,
-        date, time, timestamp: ts, loggedBy: adminName,
-      };
-      const computed = recomputeStock([...existing.stockRecords, outRecord]);
-      return Item.findOneAndUpdate(
-        { id: it.itemId },
-        { $push: { stockRecords: outRecord }, $set: { currentStock: computed } }
-      );
-    }));
+    if (insufficient.length > 0) {
+      return res.status(409).json({ error: 'Insufficient stock', insufficient });
+    }
 
-    res.status(201).json(doc);
+    // 2. Push submission into project
+    const project = await Project.findOne({ id: req.params.id });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    project.stockReceived.push(submission);
+    await project.save();
+
+    // 3. Deduct each item
+    for (const { inv, it } of invCache) {
+      await deductInventoryItem(
+        inv, it.quantity, it.rate,
+        submission.id, project.id, project.name,
+        submission.adminName, submission.date, submission.time,
+      );
+    }
+
+    res.status(201).json(project.toObject());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /api/projects/:id/stock-received/:subId  — replace a submission
+// PUT /api/projects/:id/stock-received/:subId
+// Replace submission + reconcile inventory (add/restore delta per item).
 router.put('/:id/stock-received/:subId', auth, async (req, res) => {
   try {
-    const { _id, __v, projectId, ...update } = req.body;
+    const { _id, __v, projectId: _pid, ...update } = req.body;
     const replacement = { ...update, id: update.id || req.params.subId };
-    const doc = await Project.findOneAndUpdate(
-      { id: req.params.id, 'stockReceived.id': req.params.subId },
-      { $set: { 'stockReceived.$': replacement } },
-      { new: true }
-    ).lean();
-    if (!doc) return res.status(404).json({ error: 'Submission not found' });
-    res.json(doc);
+
+    const project = await Project.findOne({ id: req.params.id });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const oldSub = project.stockReceived.find((s) => s.id === req.params.subId);
+    if (!oldSub) return res.status(404).json({ error: 'Submission not found' });
+
+    const newItems = replacement.items || [];
+    const oldItems = oldSub.items     || [];
+
+    // Build old-qty lookup
+    const oldQtyMap = {};
+    for (const oi of oldItems) { oldQtyMap[oi.itemId] = oi.quantity; }
+
+    // Check increases against available stock
+    const insufficient = [];
+    for (const ni of newItems) {
+      const delta = ni.quantity - (oldQtyMap[ni.itemId] || 0);
+      if (delta <= 0) continue;
+      const inv = await Item.findOne({ id: ni.itemId }).lean();
+      if (!inv) continue;
+      if ((inv.currentStock || 0) < delta) {
+        insufficient.push({
+          itemId:    ni.itemId,
+          itemName:  ni.itemName,
+          requested: ni.quantity,
+          available: (inv.currentStock || 0) + (oldQtyMap[ni.itemId] || 0),
+          unit:      ni.unit,
+        });
+      }
+    }
+
+    if (insufficient.length > 0) {
+      return res.status(409).json({ error: 'Insufficient stock', insufficient });
+    }
+
+    // Replace subdoc
+    const idx = project.stockReceived.findIndex((s) => s.id === req.params.subId);
+    project.stockReceived[idx] = replacement;
+    project.markModified('stockReceived');
+    await project.save();
+
+    // Reconcile inventory for every affected item
+    const allItemIds = new Set([
+      ...oldItems.map((i) => i.itemId),
+      ...newItems.map((i) => i.itemId),
+    ]);
+
+    for (const itemId of allItemIds) {
+      const inv    = await Item.findOne({ id: itemId });
+      if (!inv) continue;
+
+      const oldQty    = oldQtyMap[itemId] || 0;
+      const newIt     = newItems.find((i) => i.itemId === itemId);
+      const newQty    = newIt ? newIt.quantity : 0;
+      const delta     = newQty - oldQty;
+      const recordId  = `OUT-${req.params.subId}-${itemId}`;
+
+      // Remove old 'out' record
+      inv.stockRecords = (inv.stockRecords || []).filter((r) => r.id !== recordId);
+
+      if (newQty > 0) {
+        // Write fresh 'out' record with updated qty
+        inv.stockRecords.push({
+          id:          recordId,
+          qty:         newQty,
+          rate:        newIt ? (newIt.rate || 0) : 0,
+          supplier:    '',
+          timestamp:   new Date().toISOString(),
+          date:        replacement.date || '',
+          time:        replacement.time || '',
+          loggedBy:    replacement.adminName || '',
+          notes:       `Assigned to project: ${project.name} | Sub: ${req.params.subId}`,
+          direction:   'out',
+          projectId:   req.params.id,
+          projectName: project.name,
+        });
+      }
+
+      // Adjust currentStock: positive delta = deduct more, negative = restore
+      inv.currentStock = Math.max(0, (inv.currentStock || 0) - delta);
+      await inv.save();
+    }
+
+    res.json(project.toObject());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/projects/:id/stock-received/:subId  — remove a submission
+// DELETE /api/projects/:id/stock-received/:subId
+// Remove submission and restore all items back to inventory.
 router.delete('/:id/stock-received/:subId', auth, async (req, res) => {
   try {
-    const doc = await Project.findOneAndUpdate(
-      { id: req.params.id },
-      { $pull: { stockReceived: { id: req.params.subId } } },
-      { new: true }
-    ).lean();
-    if (!doc) return res.status(404).json({ error: 'Project not found' });
-    res.json(doc);
+    const project = await Project.findOne({ id: req.params.id });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const sub = project.stockReceived.find((s) => s.id === req.params.subId);
+    if (!sub) return res.status(404).json({ error: 'Submission not found' });
+
+    // Restore inventory before removing
+    for (const it of (sub.items || [])) {
+      const inv = await Item.findOne({ id: it.itemId });
+      if (!inv) continue;
+      await restoreInventoryItem(inv, req.params.subId, it.quantity);
+    }
+
+    project.stockReceived = project.stockReceived.filter((s) => s.id !== req.params.subId);
+    project.markModified('stockReceived');
+    await project.save();
+
+    res.json(project.toObject());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
