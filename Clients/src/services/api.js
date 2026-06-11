@@ -24,7 +24,12 @@ async function request(method, path, body) {
   });
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.status   = res.status;
+    err.response = data;
+    throw err;
+  }
   return data;
 }
 

@@ -1,6 +1,7 @@
 import './Projects.css';
 import './AddItemModal.css';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   MdRefresh, MdWarehouse,
   MdLocationOn, MdPerson, MdPhone, MdEmail,
@@ -13,8 +14,13 @@ import {
 import { useProjects }    from '../contexts/ProjectsContext';
 import { useAuth }        from '../contexts/AuthContext';
 import { exportSnapshot, nextProjectId } from '../services/projectsDb';
+import {
+  fetchInventoryItems,
+  selectInventoryItems,
+  selectInventoryStatus,
+  selectInventoryError,
+} from '../store/inventorySlice';
 import DeleteConfirmModal from './DeleteConfirmModal';
-import api from '../services/api';
 
 /* ── Constants ─────────────────────────────────────────── */
 const STATUS_STYLE = {
@@ -221,28 +227,39 @@ const ISM_TD = {
 };
 
 const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
-  const now = new Date();
-  const [date,         setDate]         = useState(now.toISOString().split('T')[0]);
-  const [time,         setTime]         = useState(now.toTimeString().slice(0, 5));
-  const [items,        setItems]        = useState([]);
-  const [loadingItems, setLoadingItems] = useState(true);
-  const [loadError,    setLoadError]    = useState('');
-  const [selections,   setSelections]   = useState({});
-  const [saving,       setSaving]       = useState(false);
-  const [submitErr,    setSubmitErr]    = useState('');
+  const dispatch     = useDispatch();
+  const items        = useSelector(selectInventoryItems);
+  const invStatus    = useSelector(selectInventoryStatus);
+  const invError     = useSelector(selectInventoryError);
+  const loadingItems = invStatus === 'idle' || invStatus === 'loading';
+  const loadError    = invStatus === 'failed' ? (invError || 'Failed to load inventory items') : '';
 
+  const now = new Date();
+  const [date,        setDate]        = useState(now.toISOString().split('T')[0]);
+  const [time,        setTime]        = useState(now.toTimeString().slice(0, 5));
+  const [selections,  setSelections]  = useState({});
+  const [saving,      setSaving]      = useState(false);
+  const [submitErr,   setSubmitErr]   = useState('');
+  const [stockErrors, setStockErrors] = useState({});
+
+  /* Fetch inventory (no-op if already cached in Redux) */
   useEffect(() => {
-    api.get('/inventory')
-      .then((data) => {
-        const active = (data || []).filter((i) => i.active !== false);
-        setItems(active);
-        const sel = {};
-        active.forEach((item) => { sel[item.id] = { checked: false, qty: '', price: String(item.unitCost || 0), description: '' }; });
-        setSelections(sel);
-      })
-      .catch((err) => setLoadError(err.message || 'Failed to load inventory items'))
-      .finally(() => setLoadingItems(false));
-  }, []);
+    dispatch(fetchInventoryItems());
+  }, [dispatch]);
+
+  /* Build selection map when items arrive or change */
+  useEffect(() => {
+    if (!items.length) return;
+    setSelections((prev) => {
+      const next = { ...prev };
+      items.forEach((item) => {
+        if (!next[item.id]) {
+          next[item.id] = { checked: false, qty: '', price: String(item.unitCost || 0), description: '' };
+        }
+      });
+      return next;
+    });
+  }, [items]);
 
   const toggle = (id) =>
     setSelections((p) => ({ ...p, [id]: { ...p[id], checked: !p[id].checked } }));
@@ -257,7 +274,10 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
     });
   };
 
-  const setQty   = (id, val) => setSelections((p) => ({ ...p, [id]: { ...p[id], qty:   val } }));
+  const setQty = (id, val) => {
+    setSelections((p) => ({ ...p, [id]: { ...p[id], qty: val } }));
+    if (stockErrors[id] !== undefined) setStockErrors((p) => { const n = { ...p }; delete n[id]; return n; });
+  };
   const setPrice = (id, val) => setSelections((p) => ({ ...p, [id]: { ...p[id], price: val } }));
   const setDesc  = (id, val) => setSelections((p) => ({ ...p, [id]: { ...p[id], description: val } }));
 
@@ -305,7 +325,17 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
         items: subItems,
       });
     } catch (err) {
-      setSubmitErr(err.message || 'Failed to save. Please try again.');
+      if (err.status === 409 && err.response?.insufficient?.length) {
+        const errs = {};
+        err.response.insufficient.forEach((it) => { errs[it.itemId] = it.available; });
+        setStockErrors(errs);
+        const names = err.response.insufficient
+          .map((it) => `${it.itemName} (available: ${it.available} ${it.unit})`)
+          .join(', ');
+        setSubmitErr(`Insufficient stock for: ${names}`);
+      } else {
+        setSubmitErr(err.message || 'Failed to save. Please try again.');
+      }
     } finally { setSaving(false); }
   };
 
@@ -389,7 +419,9 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
                         const qty       = parseFloat(sel.qty)   || 0;
                         const price     = parseFloat(sel.price) || 0;
                         const total     = qty * price;
-                        const overLimit = isChecked && qty > 0 && qty > (item.currentStock ?? 0);
+                        const serverShort = stockErrors[item.id] !== undefined;
+                        const overLimit   = isChecked && qty > 0 && (qty > (item.currentStock ?? 0) || serverShort);
+                        const maxAvail    = serverShort ? stockErrors[item.id] : (item.currentStock ?? 0);
                         return (
                           <tr
                             key={item.id}
@@ -447,7 +479,7 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
                               </div>
                               {overLimit && (
                                 <div style={{ fontSize: 10.5, color: '#DC2626', marginTop: 2, fontWeight: 600 }}>
-                                  max {item.currentStock} {item.unit}
+                                  max {maxAvail} {item.unit}
                                 </div>
                               )}
                             </td>
@@ -590,7 +622,14 @@ const EditSubmissionModal = ({ submission, onSave, onClose }) => {
         items: updatedItems,
       });
     } catch (err) {
-      setSubmitErr(err.message || 'Failed to save. Please try again.');
+      if (err.status === 409 && err.response?.insufficient?.length) {
+        const names = err.response.insufficient
+          .map((it) => `${it.itemName} (available: ${it.available} ${it.unit})`)
+          .join(', ');
+        setSubmitErr(`Insufficient stock for: ${names}`);
+      } else {
+        setSubmitErr(err.message || 'Failed to save. Please try again.');
+      }
     } finally { setSaving(false); }
   };
 
@@ -1244,43 +1283,54 @@ const Projects = () => {
   const [addStockProject,  setAddStockProject]  = useState(null);
   const [editSubmission,   setEditSubmission]   = useState(null); // { projectId, sub }
 
-  const openAdd  = ()        => { setModalMode('add');  setModalProject(null);    setModalOpen(true); };
-  const openEdit = (proj, e) => { e.stopPropagation();  setModalMode('edit'); setModalProject(proj); setModalOpen(true); };
-  const closeModal = ()      => setModalOpen(false);
+  const closeModal = useCallback(() => setModalOpen(false), []);
 
-  const handleSave = async (form) => {
+  const openAdd = useCallback(() => {
+    setModalMode('add');
+    setModalProject(null);
+    setModalOpen(true);
+  }, []);
+
+  const openEdit = useCallback((proj, e) => {
+    e.stopPropagation();
+    setModalMode('edit');
+    setModalProject(proj);
+    setModalOpen(true);
+  }, []);
+
+  const handleSave = useCallback(async (form) => {
     if (modalMode === 'add') {
       await addProject({ ...form, id: nextProjectId() });
     } else {
       await updateProject(modalProject.id, form);
     }
     closeModal();
-  };
+  }, [modalMode, modalProject, addProject, updateProject, closeModal]);
 
-  const handleDelete = (proj, e) => {
+  const handleDelete = useCallback((proj, e) => {
     e.stopPropagation();
     setDeleteConfirm({
       title:   'Delete Project',
       message: `"${proj.name}" and all its associated stock data will be permanently removed.`,
       onConfirm: async () => { await deleteProject(proj.id); },
     });
-  };
+  }, [deleteProject]);
 
-  const handleToggleActive = async (proj, e) => {
+  const handleToggleActive = useCallback(async (proj, e) => {
     e.stopPropagation();
     const newStatus = proj.status === 'Active' ? 'Inactive' : 'Active';
     await updateProject(proj.id, { ...proj, status: newStatus });
-  };
+  }, [updateProject]);
 
-  const handleAddStock = async (submission) => {
+  const handleAddStock = useCallback(async (submission) => {
     await addStockReceived(addStockProject.id, submission);
     setAddStockProject(null);
-  };
+  }, [addStockReceived, addStockProject]);
 
-  const handleUpdateSubmission = async (updatedData) => {
+  const handleUpdateSubmission = useCallback(async (updatedData) => {
     await updateStockReceived(editSubmission.projectId, editSubmission.sub.id, updatedData);
     setEditSubmission(null);
-  };
+  }, [updateStockReceived, editSubmission]);
 
   const summary = useMemo(() => {
     let active = 0, inactive = 0, maintenance = 0;
