@@ -9,8 +9,10 @@ const userSchema = new mongoose.Schema({
   projectId: { type: String, default: null },
   email:     { type: String, default: '' },
   phone:     { type: String, default: '' },
-  isActive:  { type: Boolean, default: true },
-  createdAt: { type: String, default: () => new Date().toISOString().split('T')[0] },
+  isActive:       { type: Boolean, default: true },
+  createdAt:      { type: String, default: () => new Date().toISOString().split('T')[0] },
+  resetOtp:       { type: String, default: null },
+  resetOtpExpiry: { type: Date,   default: null },
 });
 
 module.exports = mongoose.model('User', userSchema);

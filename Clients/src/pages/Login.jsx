@@ -1,7 +1,7 @@
 ﻿import './Login.css';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MdVisibility, MdVisibilityOff, MdLock, MdPerson, MdRestaurant } from 'react-icons/md';
-import { authenticate, setCurrentUser } from '../services/loginDb';
+import { authenticate, setCurrentUser, forgotPassword, verifyOtp, resetPassword } from '../services/loginDb';
 
 const Login = ({ onLogin }) => {
   const [username, setUsername]   = useState('');
@@ -13,6 +13,25 @@ const Login = ({ onLogin }) => {
   const [shake, setShake]         = useState(false);
   const [fieldErr, setFieldErr]   = useState({ username: false, password: false });
   const [authUser, setAuthUser]   = useState(null); // set on success → shows auth card
+
+  // Forgot-password flow: 'login' | 'forgot' | 'otp' | 'newpw' | 'pwdone'
+  const [fpView,      setFpView]      = useState('login');
+  const [fpUsername,  setFpUsername]  = useState('');
+  const [fpEmail,     setFpEmail]     = useState('');
+  const [fpDigits,    setFpDigits]    = useState(['', '', '', '', '', '']);
+  const [fpNewPw,     setFpNewPw]     = useState('');
+  const [fpConfirmPw, setFpConfirmPw] = useState('');
+  const [fpShowPw,    setFpShowPw]    = useState(false);
+  const [fpLoading,   setFpLoading]   = useState(false);
+  const [fpError,     setFpError]     = useState('');
+  const [fpTimer,     setFpTimer]     = useState(0); // resend countdown
+  const digitRefs                     = useRef([]);
+
+  useEffect(() => {
+    if (fpTimer <= 0) return;
+    const t = setTimeout(() => setFpTimer(s => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [fpTimer]);
 
   const triggerShake = () => {
     setShake(true);
@@ -51,6 +70,93 @@ const Login = ({ onLogin }) => {
       setError('Server error. Please try again.');
       triggerShake();
     });
+  };
+
+  const fpOtp = fpDigits.join('');
+
+  const handleDigitChange = (idx, val) => {
+    const digit = val.replace(/\D/g, '').slice(-1);
+    const next = [...fpDigits];
+    next[idx] = digit;
+    setFpDigits(next);
+    setFpError('');
+    if (digit && idx < 5) digitRefs.current[idx + 1]?.focus();
+  };
+
+  const handleDigitKeyDown = (idx, e) => {
+    if (e.key === 'Backspace' && !fpDigits[idx] && idx > 0) {
+      digitRefs.current[idx - 1]?.focus();
+    }
+  };
+
+  const handleDigitPaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    const next = ['', '', '', '', '', ''];
+    pasted.split('').forEach((d, i) => { next[i] = d; });
+    setFpDigits(next);
+    setFpError('');
+    digitRefs.current[Math.min(pasted.length, 5)]?.focus();
+  };
+
+  const sendOtp = async () => {
+    setFpError('');
+    if (!fpUsername.trim()) { setFpError('Please enter your username.'); return; }
+    setFpLoading(true);
+    try {
+      const res = await forgotPassword(fpUsername);
+      setFpEmail(res.email || '');
+      setFpDigits(['', '', '', '', '', '']);
+      setFpTimer(60);
+      setFpView('otp');
+      setTimeout(() => digitRefs.current[0]?.focus(), 100);
+    } catch (err) {
+      setFpError(err.message);
+    } finally {
+      setFpLoading(false);
+    }
+  };
+
+  const handleForgotSend = (e) => { e.preventDefault(); sendOtp(); };
+
+  const handleForgotVerifyOtp = async (e) => {
+    e.preventDefault();
+    setFpError('');
+    if (fpOtp.length !== 6) { setFpError('Enter all 6 digits of the OTP.'); return; }
+    setFpLoading(true);
+    try {
+      await verifyOtp(fpUsername, fpOtp);
+      setFpView('newpw');
+    } catch (err) {
+      setFpError(err.message);
+      setFpDigits(['', '', '', '', '', '']);
+      setTimeout(() => digitRefs.current[0]?.focus(), 50);
+    } finally {
+      setFpLoading(false);
+    }
+  };
+
+  const handleForgotResetPw = async (e) => {
+    e.preventDefault();
+    setFpError('');
+    if (fpNewPw.length < 6) { setFpError('Password must be at least 6 characters.'); return; }
+    if (fpNewPw !== fpConfirmPw) { setFpError('Passwords do not match.'); return; }
+    setFpLoading(true);
+    try {
+      await resetPassword(fpUsername, fpOtp, fpNewPw);
+      setFpView('pwdone');
+    } catch (err) {
+      setFpError(err.message);
+    } finally {
+      setFpLoading(false);
+    }
+  };
+
+  const resetFpFlow = () => {
+    setFpView('login');
+    setFpUsername(''); setFpEmail(''); setFpDigits(['', '', '', '', '', '']);
+    setFpNewPw(''); setFpConfirmPw(''); setFpError(''); setFpShowPw(false); setFpTimer(0);
   };
 
   const features = [
@@ -306,6 +412,258 @@ const Login = ({ onLogin }) => {
           </div>
         )}
 
+        {/* ── Forgot-password overlay ── */}
+        {fpView !== 'login' && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 10,
+            background: '#F8FAFC',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            padding: '32px 32px',
+            animation: 'fade-in 0.25s ease',
+            overflowY: 'auto',
+          }}>
+            <div style={{ width: '100%', maxWidth: 420 }}>
+
+              {/* ── Step progress bar (steps 1-3 only) ── */}
+              {fpView !== 'pwdone' && (() => {
+                const steps = [
+                  { key: 'forgot', label: 'Username' },
+                  { key: 'otp',    label: 'Verify OTP' },
+                  { key: 'newpw',  label: 'New Password' },
+                ];
+                const current = steps.findIndex(s => s.key === fpView);
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 32 }}>
+                    {steps.map((s, i) => (
+                      <React.Fragment key={s.key}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                          <div style={{
+                            width: 32, height: 32, borderRadius: '50%',
+                            background: i < current ? '#10B981' : i === current ? 'linear-gradient(135deg,#4F46E5,#4338CA)' : '#E2E8F0',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 13, fontWeight: 700,
+                            color: i <= current ? '#fff' : '#94A3B8',
+                            transition: 'all 0.3s ease',
+                            boxShadow: i === current ? '0 0 0 4px rgba(79,70,229,0.15)' : 'none',
+                          }}>
+                            {i < current
+                              ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              : i + 1
+                            }
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: i === current ? '#4F46E5' : '#94A3B8', marginTop: 5, whiteSpace: 'nowrap' }}>{s.label}</div>
+                        </div>
+                        {i < steps.length - 1 && (
+                          <div style={{ flex: 1, height: 2, background: i < current ? '#10B981' : '#E2E8F0', marginBottom: 18, transition: 'background 0.3s ease' }} />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Error banner */}
+              {fpError && (
+                <div style={{ background: '#FEF2F2', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: '11px 14px', marginBottom: 18, fontSize: 13, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8, animation: 'fade-in 0.2s ease' }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>{fpError}
+                </div>
+              )}
+
+              {/* ── Step 1: enter username ── */}
+              {fpView === 'forgot' && (
+                <form onSubmit={handleForgotSend} noValidate>
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.4px', marginBottom: 6 }}>Forgot password?</div>
+                    <div style={{ fontSize: 13.5, color: '#64748B', lineHeight: 1.6 }}>Enter your username and we'll send a one-time password to your registered email address.</div>
+                  </div>
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Username</label>
+                    <div style={{ position: 'relative' }}>
+                      <MdPerson style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 18, pointerEvents: 'none' }} />
+                      <input
+                        autoFocus
+                        type="text"
+                        value={fpUsername}
+                        onChange={(e) => { setFpUsername(e.target.value); setFpError(''); }}
+                        placeholder="Enter your username"
+                        style={{ width: '100%', height: 46, border: '1.5px solid #E2E8F0', borderRadius: 10, padding: '0 14px 0 42px', fontSize: 14, color: '#0F172A', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                        onFocus={(e) => { e.target.style.borderColor = '#4F46E5'; e.target.style.boxShadow = '0 0 0 3px rgba(79,70,229,0.1)'; }}
+                        onBlur={(e)  => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
+                      />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={fpLoading} style={{ width: '100%', height: 48, background: fpLoading ? '#9CA3AF' : 'linear-gradient(135deg,#4F46E5,#4338CA)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 14, fontWeight: 700, cursor: fpLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: fpLoading ? 'none' : '0 4px 14px rgba(79,70,229,0.35)', transition: 'all 0.2s' }}>
+                    {fpLoading
+                      ? <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.8s linear infinite' }}><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.35)" strokeWidth="3"/><path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round"/></svg> Sending OTP…</>
+                      : <>Send OTP <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></>
+                    }
+                  </button>
+                  <button type="button" onClick={resetFpFlow} style={{ width: '100%', marginTop: 10, height: 42, background: 'none', border: '1.5px solid #E2E8F0', borderRadius: 10, color: '#64748B', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    Back to Login
+                  </button>
+                </form>
+              )}
+
+              {/* ── Step 2: enter OTP ── */}
+              {fpView === 'otp' && (
+                <form onSubmit={handleForgotVerifyOtp} noValidate>
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.4px', marginBottom: 6 }}>Enter verification code</div>
+                    <div style={{ fontSize: 13.5, color: '#64748B', lineHeight: 1.6 }}>
+                      We sent a 6-digit code to <strong style={{ color: '#4F46E5' }}>{fpEmail || 'your email'}</strong>. It expires in 15 minutes.
+                    </div>
+                  </div>
+
+                  {/* 6-box OTP input */}
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 10 }}>Verification Code</label>
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                      {fpDigits.map((d, i) => (
+                        <input
+                          key={i}
+                          ref={el => { digitRefs.current[i] = el; }}
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={d}
+                          onChange={(e) => handleDigitChange(i, e.target.value)}
+                          onKeyDown={(e) => handleDigitKeyDown(i, e)}
+                          onPaste={i === 0 ? handleDigitPaste : undefined}
+                          style={{
+                            width: 52, height: 60, border: `2px solid ${d ? '#4F46E5' : '#E2E8F0'}`,
+                            borderRadius: 12, fontSize: 26, fontWeight: 800, textAlign: 'center',
+                            color: '#4F46E5', background: d ? '#EEF2FF' : '#fff', outline: 'none',
+                            transition: 'all 0.15s ease', caretColor: 'transparent',
+                            boxShadow: d ? '0 0 0 3px rgba(79,70,229,0.12)' : 'none',
+                          }}
+                          onFocus={(e) => { e.target.style.borderColor = '#4F46E5'; e.target.style.boxShadow = '0 0 0 3px rgba(79,70,229,0.15)'; }}
+                          onBlur={(e)  => { e.target.style.borderColor = d ? '#4F46E5' : '#E2E8F0'; e.target.style.boxShadow = d ? '0 0 0 3px rgba(79,70,229,0.12)' : 'none'; }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Resend row */}
+                  <div style={{ textAlign: 'center', marginBottom: 20, fontSize: 13, color: '#64748B' }}>
+                    Didn't receive it?{' '}
+                    {fpTimer > 0
+                      ? <span style={{ color: '#94A3B8' }}>Resend in <strong style={{ color: '#4F46E5' }}>{fpTimer}s</strong></span>
+                      : <button type="button" onClick={sendOtp} style={{ background: 'none', border: 'none', color: '#4F46E5', fontWeight: 700, cursor: 'pointer', fontSize: 13, padding: 0, textDecoration: 'underline' }}>Resend OTP</button>
+                    }
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={fpLoading || fpOtp.length !== 6}
+                    style={{ width: '100%', height: 48, background: (fpLoading || fpOtp.length !== 6) ? '#9CA3AF' : 'linear-gradient(135deg,#4F46E5,#4338CA)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 14, fontWeight: 700, cursor: (fpLoading || fpOtp.length !== 6) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: (fpLoading || fpOtp.length !== 6) ? 'none' : '0 4px 14px rgba(79,70,229,0.35)', transition: 'all 0.2s' }}
+                  >
+                    {fpLoading
+                      ? <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.8s linear infinite' }}><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.35)" strokeWidth="3"/><path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round"/></svg> Verifying…</>
+                      : 'Verify Code'
+                    }
+                  </button>
+                  <button type="button" onClick={resetFpFlow} style={{ width: '100%', marginTop: 10, height: 42, background: 'none', border: '1.5px solid #E2E8F0', borderRadius: 10, color: '#64748B', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </form>
+              )}
+
+              {/* ── Step 3: new password ── */}
+              {fpView === 'newpw' && (
+                <form onSubmit={handleForgotResetPw} noValidate>
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.4px', marginBottom: 6 }}>Set new password</div>
+                    <div style={{ fontSize: 13.5, color: '#64748B' }}>OTP verified. Create a strong new password — at least 6 characters.</div>
+                  </div>
+
+                  {/* Password strength bar */}
+                  {fpNewPw && (() => {
+                    const hasUpper = /[A-Z]/.test(fpNewPw);
+                    const hasNum   = /\d/.test(fpNewPw);
+                    const hasSpec  = /[^a-zA-Z0-9]/.test(fpNewPw);
+                    const score = (fpNewPw.length >= 6 ? 1 : 0) + (hasUpper ? 1 : 0) + (hasNum ? 1 : 0) + (hasSpec ? 1 : 0);
+                    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+                    const colors = ['', '#EF4444', '#F59E0B', '#3B82F6', '#10B981'];
+                    return (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                          {[1,2,3,4].map(n => (
+                            <div key={n} style={{ flex: 1, height: 4, borderRadius: 4, background: n <= score ? colors[score] : '#E2E8F0', transition: 'background 0.25s' }} />
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: colors[score] }}>{labels[score]}</div>
+                      </div>
+                    );
+                  })()}
+
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 6 }}>New Password</label>
+                    <div style={{ position: 'relative' }}>
+                      <MdLock style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 18, pointerEvents: 'none' }} />
+                      <input
+                        autoFocus
+                        type={fpShowPw ? 'text' : 'password'}
+                        value={fpNewPw}
+                        onChange={(e) => { setFpNewPw(e.target.value); setFpError(''); }}
+                        placeholder="Create new password"
+                        style={{ width: '100%', height: 46, border: '1.5px solid #E2E8F0', borderRadius: 10, padding: '0 44px 0 42px', fontSize: 14, color: '#0F172A', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                        onFocus={(e) => { e.target.style.borderColor = '#4F46E5'; e.target.style.boxShadow = '0 0 0 3px rgba(79,70,229,0.1)'; }}
+                        onBlur={(e)  => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
+                      />
+                      <button type="button" onClick={() => setFpShowPw(s => !s)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', fontSize: 20, display: 'flex', alignItems: 'center', padding: 4 }}>
+                        {fpShowPw ? <MdVisibilityOff /> : <MdVisibility />}
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 22 }}>
+                    <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Confirm Password</label>
+                    <div style={{ position: 'relative' }}>
+                      <MdLock style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: fpConfirmPw && fpConfirmPw !== fpNewPw ? '#EF4444' : '#94A3B8', fontSize: 18, pointerEvents: 'none' }} />
+                      <input
+                        type={fpShowPw ? 'text' : 'password'}
+                        value={fpConfirmPw}
+                        onChange={(e) => { setFpConfirmPw(e.target.value); setFpError(''); }}
+                        placeholder="Confirm new password"
+                        style={{ width: '100%', height: 46, border: `1.5px solid ${fpConfirmPw && fpConfirmPw !== fpNewPw ? '#EF4444' : '#E2E8F0'}`, borderRadius: 10, padding: '0 14px 0 42px', fontSize: 14, color: '#0F172A', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                        onFocus={(e) => { if (!fpConfirmPw || fpConfirmPw === fpNewPw) { e.target.style.borderColor = '#4F46E5'; e.target.style.boxShadow = '0 0 0 3px rgba(79,70,229,0.1)'; } }}
+                        onBlur={(e)  => { e.target.style.borderColor = fpConfirmPw && fpConfirmPw !== fpNewPw ? '#EF4444' : '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
+                      />
+                      {fpConfirmPw && fpConfirmPw === fpNewPw && (
+                        <svg style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)' }} width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      )}
+                    </div>
+                  </div>
+                  <button type="submit" disabled={fpLoading} style={{ width: '100%', height: 48, background: fpLoading ? '#9CA3AF' : 'linear-gradient(135deg,#4F46E5,#4338CA)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 14, fontWeight: 700, cursor: fpLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: fpLoading ? 'none' : '0 4px 14px rgba(79,70,229,0.35)', transition: 'all 0.2s' }}>
+                    {fpLoading
+                      ? <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.8s linear infinite' }}><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.35)" strokeWidth="3"/><path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round"/></svg> Saving…</>
+                      : <>Reset Password <MdLock style={{ fontSize: 17 }} /></>
+                    }
+                  </button>
+                </form>
+              )}
+
+              {/* ── Step 4: success ── */}
+              {fpView === 'pwdone' && (
+                <div style={{ textAlign: 'center', animation: 'slide-up 0.35s ease' }}>
+                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', border: '3px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', boxShadow: '0 0 0 12px rgba(16,185,129,0.08)', animation: 'pop-in 0.45s cubic-bezier(0.34,1.56,0.64,1) both' }}>
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+                      <path d="M5 12l5 5L20 7" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <div style={{ fontSize: 23, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.4px', marginBottom: 8 }}>Password Reset!</div>
+                  <div style={{ fontSize: 13.5, color: '#64748B', lineHeight: 1.6, marginBottom: 32 }}>
+                    Your password has been updated successfully.<br/>You can now sign in with your new password.
+                  </div>
+                  <button type="button" onClick={resetFpFlow} style={{ width: '100%', height: 48, background: 'linear-gradient(135deg,#4F46E5,#4338CA)', border: 'none', borderRadius: 12, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(79,70,229,0.35)' }}>
+                    Back to Login
+                  </button>
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
+
         <div
           style={{
             width: '100%', maxWidth: 420,
@@ -419,6 +777,7 @@ const Login = ({ onLogin }) => {
                 </label>
                 <button
                   type="button"
+                  onClick={() => setFpView('forgot')}
                   style={{
                     fontSize: 12, color: '#4F46E5', background: 'none',
                     border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0,
