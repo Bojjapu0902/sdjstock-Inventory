@@ -1,6 +1,5 @@
 import './Projects.css';
 import './AddItemModal.css';
-import React, { useState, useMemo, useEffect } from 'react';
 import {
   MdRefresh, MdWarehouse,
   MdLocationOn, MdPerson, MdPhone, MdEmail,
@@ -14,19 +13,8 @@ import { useProjects }       from '../contexts/ProjectsContext';
 import { useAuth }           from '../contexts/AuthContext';
 import { useInventoryStock } from '../hooks/useInventoryStock';
 import { exportSnapshot, nextProjectId } from '../services/projectsDb';
-<<<<<<< Updated upstream
-=======
 import api from '../services/api';
-import {
-  fetchInventoryItems,
-  selectInventoryItems,
-  selectInventoryStatus,
-  selectInventoryError,
-  invalidateInventory,
-} from '../store/inventorySlice';
->>>>>>> Stashed changes
 import DeleteConfirmModal from './DeleteConfirmModal';
-import api from '../services/api';
 
 /* ── Constants ─────────────────────────────────────────── */
 const STATUS_STYLE = {
@@ -1243,7 +1231,6 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, 
 const Projects = () => {
   const { projects, stockReceived, stockUsed, addProject, updateProject, deleteProject, addStockReceived, updateStockReceived, deleteStockReceived } = useProjects();
   const { user }        = useAuth();
-  const dispatch        = useDispatch();
   const { deductStock, refreshAll } = useInventoryStock();
 
   const [search,          setSearch]          = useState('');
@@ -1286,7 +1273,7 @@ const Projects = () => {
     await updateProject(proj.id, { ...proj, status: newStatus });
   };
 
-  const handleAddStock = async (submission) => {
+  const handleAddStock = useCallback(async (submission) => {
     await addStockReceived(addStockProject.id, submission);
 
     // Deduct quantities from InventoryItems.currentStock and record 'out' stock record
@@ -1321,15 +1308,10 @@ const Projects = () => {
       )
     );
 
-    // Reset Redux inventory cache so next modal open re-fetches fresh stock levels
-    dispatch(invalidateInventory());
+    await refreshAll();
 
     setAddStockProject(null);
-<<<<<<< Updated upstream
-  };
-=======
-  }, [addStockReceived, addStockProject, deductStock, dispatch]);
->>>>>>> Stashed changes
+  }, [addStockReceived, addStockProject, deductStock, refreshAll]);
 
   const handleUpdateSubmission = async (updatedData) => {
     await updateStockReceived(editSubmission.projectId, editSubmission.sub.id, updatedData);
@@ -1379,7 +1361,6 @@ const Projects = () => {
             onConfirm: async () => {
               await deleteStockReceived(viewingProject.id, sub.id);
               await refreshAll();
-              dispatch(invalidateInventory());
             },
           })}
         />
