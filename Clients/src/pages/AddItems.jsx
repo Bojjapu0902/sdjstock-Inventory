@@ -412,18 +412,18 @@ const AddItems = () => {
     syncItemStock(updated.id, updated.currentStock);
   };
 
-  const handleAddStock = async ({ qty, rate, timestamp, supplier, date, time }) => {
+  const handleAddStock = async ({ qty, rate, timestamp, supplier, date, time, loggedBy }) => {
     const updated = await api.post(`/inventory/${stockItem.id}/stock-records`, {
-      qty, rate, supplier, timestamp, date, time,
+      qty, rate, supplier, timestamp, date, time, loggedBy,
     });
     syncItem(updated);
     setStockItem(null);
   };
 
-  const handleEditStockRecord = async ({ qty, rate, timestamp, supplier, date, time }) => {
+  const handleEditStockRecord = async ({ qty, rate, timestamp, supplier, date, time, loggedBy }) => {
     const { record, item } = stockEditRecord;
     const updated = await api.put(`/inventory/${item.id}/stock-records/${record.id}`, {
-      qty, rate, supplier, timestamp, date, time,
+      qty, rate, supplier, timestamp, date, time, loggedBy,
     });
     syncItem(updated);
     setStockEditRecord(null);

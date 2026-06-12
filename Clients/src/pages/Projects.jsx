@@ -10,9 +10,21 @@ import {
   MdKeyboardArrowDown, MdKeyboardArrowUp, MdFileDownload,
   MdPrint,
 } from 'react-icons/md';
-import { useProjects }    from '../contexts/ProjectsContext';
-import { useAuth }        from '../contexts/AuthContext';
+import { useProjects }       from '../contexts/ProjectsContext';
+import { useAuth }           from '../contexts/AuthContext';
+import { useInventoryStock } from '../hooks/useInventoryStock';
 import { exportSnapshot, nextProjectId } from '../services/projectsDb';
+<<<<<<< Updated upstream
+=======
+import api from '../services/api';
+import {
+  fetchInventoryItems,
+  selectInventoryItems,
+  selectInventoryStatus,
+  selectInventoryError,
+  invalidateInventory,
+} from '../store/inventorySlice';
+>>>>>>> Stashed changes
 import DeleteConfirmModal from './DeleteConfirmModal';
 import api from '../services/api';
 
@@ -1230,7 +1242,9 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, 
    ══════════════════════════════════════════════════════════ */
 const Projects = () => {
   const { projects, stockReceived, stockUsed, addProject, updateProject, deleteProject, addStockReceived, updateStockReceived, deleteStockReceived } = useProjects();
-  const { user } = useAuth();
+  const { user }        = useAuth();
+  const dispatch        = useDispatch();
+  const { deductStock, refreshAll } = useInventoryStock();
 
   const [search,          setSearch]          = useState('');
   const [statusFilter,    setStatusFilter]    = useState('All');
@@ -1274,8 +1288,48 @@ const Projects = () => {
 
   const handleAddStock = async (submission) => {
     await addStockReceived(addStockProject.id, submission);
+
+    // Deduct quantities from InventoryItems.currentStock and record 'out' stock record
+    const ts = new Date(`${submission.date}T${submission.time}:00`).toISOString();
+    await deductStock(submission.items.map((i) => ({
+      itemId:       i.itemId,
+      qty:          i.quantity,
+      projectId:    addStockProject.id,
+      projectName:  addStockProject.name,
+      submissionId: submission.id,
+      loggedBy:     submission.adminName,
+      date:         submission.date,
+      time:         submission.time,
+      timestamp:    ts,
+    })));
+
+    // Write an OUT record to stock-history for each item so it appears in Stock Update History
+    await Promise.all(
+      submission.items.map((i) =>
+        api.post(`/stock-history/${i.itemId}`, {
+          timestamp: ts,
+          qty:       i.quantity,
+          rate:      i.rate,
+          unit:      i.unit,
+          desc:      i.notes || '',
+          type:      'OUT',
+          itemName:  i.itemName,
+          category:  i.category,
+          usageType: `Project: ${addStockProject.name}`,
+          loggedBy:  submission.adminName,
+        }).catch(console.error)
+      )
+    );
+
+    // Reset Redux inventory cache so next modal open re-fetches fresh stock levels
+    dispatch(invalidateInventory());
+
     setAddStockProject(null);
+<<<<<<< Updated upstream
   };
+=======
+  }, [addStockReceived, addStockProject, deductStock, dispatch]);
+>>>>>>> Stashed changes
 
   const handleUpdateSubmission = async (updatedData) => {
     await updateStockReceived(editSubmission.projectId, editSubmission.sub.id, updatedData);
@@ -1322,7 +1376,11 @@ const Projects = () => {
           onDeleteSubmission={(sub) => setDeleteConfirm({
             title:   'Delete Stock Record',
             message: `Record from ${sub.date} with ${sub.items?.length || 0} items will be permanently removed.`,
-            onConfirm: async () => { await deleteStockReceived(viewingProject.id, sub.id); },
+            onConfirm: async () => {
+              await deleteStockReceived(viewingProject.id, sub.id);
+              await refreshAll();
+              dispatch(invalidateInventory());
+            },
           })}
         />
       ) : (

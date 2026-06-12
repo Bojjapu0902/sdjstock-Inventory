@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './AddItemModal.css';
 import { MdClose, MdSave, MdAdd } from 'react-icons/md';
 import { categories } from '../services/mockData';
+import { useAuth } from '../contexts/AuthContext';
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'pcs', 'dozen', 'bottle', 'box', 'bag', 'pack'];
 const CATEGORY_OPTIONS = categories.filter((c) => c !== 'All Categories');
@@ -15,6 +16,9 @@ function generateId() {
 }
 
 const AddItemModal = ({ mode = 'add', item = null, onSave, onClose }) => {
+  const { user } = useAuth();
+  const addedByName = user?.name || user?.username || 'Admin';
+
   const [form, setForm]     = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -53,7 +57,7 @@ const AddItemModal = ({ mode = 'add', item = null, onSave, onClose }) => {
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setSaving(true);
     try {
-      await onSave({ ...form });
+      await onSave({ ...form, addedBy: addedByName });
     } finally {
       setSaving(false);
     }
@@ -152,6 +156,15 @@ const AddItemModal = ({ mode = 'add', item = null, onSave, onClose }) => {
               onChange={change}
               placeholder="e.g. Lalitha Stores"
             />
+          </div>
+
+          {/* Added By — read-only */}
+          <div className="aim-field">
+            <label>{isEdit ? 'Last Updated By' : 'Added By'}</label>
+            <div className="aim-addedby-chip">
+              <span className="aim-addedby-avatar">{addedByName.charAt(0).toUpperCase()}</span>
+              <span className="aim-addedby-name">{addedByName}</span>
+            </div>
           </div>
 
         </div>

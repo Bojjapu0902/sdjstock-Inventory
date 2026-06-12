@@ -1,6 +1,14 @@
 const router = require('express').Router();
 const auth   = require('../middleware/auth');
 const SR     = require('../models/StockReceived');
+const Item   = require('../models/InventoryItem');
+
+function recomputeStock(records) {
+  return (records || []).reduce((total, r) => {
+    const qty = Number(r.qty) || 0;
+    return r.direction === 'out' ? total - qty : total + qty;
+  }, 0);
+}
 
 // GET /api/stock-received  → { [projectId]: Submission[] }
 router.get('/', auth, async (req, res) => {
@@ -52,7 +60,35 @@ router.put('/:projectId/:submissionId', auth, async (req, res) => {
 // DELETE /api/stock-received/:projectId/:submissionId
 router.delete('/:projectId/:submissionId', auth, async (req, res) => {
   try {
-    await SR.findOneAndDelete({ projectId: req.params.projectId, submissionId: req.params.submissionId });
+    const { projectId, submissionId } = req.params;
+
+    // Find submission first so we know which items to restore
+    const submission = await SR.findOne({ projectId, submissionId }).lean();
+
+    if (submission && Array.isArray(submission.items) && submission.items.length > 0) {
+      for (const subItem of submission.items) {
+        const item = await Item.findOne({ id: subItem.itemId });
+        if (!item) continue;
+
+        item.stockRecords = (item.stockRecords || []).filter((r) => {
+          if (r.direction !== 'out') return true; // keep all 'in' records untouched
+
+          // New records: matched precisely by submissionId
+          if (r.submissionId && r.submissionId === submissionId) return false;
+
+          // Old records (created before submissionId was tracked): match by projectId + date + qty
+          if (!r.submissionId && r.projectId === projectId &&
+              r.date === submission.date && Number(r.qty) === Number(subItem.quantity)) return false;
+
+          return true;
+        });
+
+        item.currentStock = recomputeStock(item.stockRecords);
+        await item.save();
+      }
+    }
+
+    await SR.findOneAndDelete({ projectId, submissionId });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

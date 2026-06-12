@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import './AddStockModal.css';
 import { MdClose, MdAdd, MdSave } from 'react-icons/md';
+import { useAuth } from '../contexts/AuthContext';
 
 const today   = () => new Date().toISOString().slice(0, 10);
 const nowTime = () => new Date().toTimeString().slice(0, 5);
 
 /* record prop → edit mode; null → add mode */
 const AddStockModal = ({ item, record = null, onSave, onClose }) => {
+  const { user } = useAuth();
+  const loggedByName = user?.name || user?.username || 'Admin';
+
   const isEdit = !!record;
 
   const [qty,      setQty]      = useState('');
@@ -61,6 +65,7 @@ const AddStockModal = ({ item, record = null, onSave, onClose }) => {
         time,
         supplier:  supplier.trim(),
         timestamp: `${date}T${time}:00`,
+        loggedBy:  loggedByName,
       });
     } finally {
       setSaving(false);
@@ -186,6 +191,15 @@ const AddStockModal = ({ item, record = null, onSave, onClose }) => {
               onChange={(e) => setSupplier(e.target.value)}
               placeholder="e.g. Lalitha Stores"
             />
+          </div>
+
+          {/* Logged By — read-only */}
+          <div className="asm-field">
+            <label>Logged By</label>
+            <div className="asm-loggedby-chip">
+              <span className="asm-loggedby-avatar">{loggedByName.charAt(0).toUpperCase()}</span>
+              <span className="asm-loggedby-name">{loggedByName}</span>
+            </div>
           </div>
 
           {/* Stock preview */}
