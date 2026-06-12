@@ -1,7 +1,8 @@
-const router = require('express').Router();
-const auth   = require('../middleware/auth');
-const SR     = require('../models/StockReceived');
-const Item   = require('../models/InventoryItem');
+const router  = require('express').Router();
+const auth    = require('../middleware/auth');
+const SR      = require('../models/StockReceived');
+const Item    = require('../models/InventoryItem');
+const Project = require('../models/Project');
 
 function recomputeStock(records) {
   return (records || []).reduce((total, r) => {
@@ -36,7 +37,16 @@ router.get('/:projectId', auth, async (req, res) => {
 router.post('/:projectId', auth, async (req, res) => {
   try {
     const { id, ...rest } = req.body;
+
+    // Write to StockReceived collection (source of truth for context)
     const doc = await SR.create({ submissionId: id, projectId: req.params.projectId, ...rest });
+
+    // Sync to Project.stockReceived embedded array
+    await Project.findOneAndUpdate(
+      { id: req.params.projectId },
+      { $push: { stockReceived: { id, ...rest } } }
+    );
+
     const { submissionId, _id, __v, ...out } = doc.toObject();
     res.status(201).json({ id: submissionId, ...out });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -46,12 +56,22 @@ router.post('/:projectId', auth, async (req, res) => {
 router.put('/:projectId/:submissionId', auth, async (req, res) => {
   try {
     const { id, _id, __v, ...rest } = req.body;
+    const effectiveId = id || req.params.submissionId;
+
+    // Update StockReceived collection
     const doc = await SR.findOneAndUpdate(
       { projectId: req.params.projectId, submissionId: req.params.submissionId },
-      { $set: { submissionId: id || req.params.submissionId, ...rest } },
+      { $set: { submissionId: effectiveId, ...rest } },
       { new: true }
     ).lean();
     if (!doc) return res.status(404).json({ error: 'Submission not found' });
+
+    // Sync update to Project.stockReceived embedded array
+    await Project.findOneAndUpdate(
+      { id: req.params.projectId, 'stockReceived.id': req.params.submissionId },
+      { $set: { 'stockReceived.$': { id: effectiveId, ...rest } } }
+    );
+
     const { submissionId, _id: sid, __v: sv, ...out } = doc;
     res.json({ id: submissionId, ...out });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -89,6 +109,13 @@ router.delete('/:projectId/:submissionId', auth, async (req, res) => {
     }
 
     await SR.findOneAndDelete({ projectId, submissionId });
+
+    // Sync removal from Project.stockReceived embedded array
+    await Project.findOneAndUpdate(
+      { id: projectId },
+      { $pull: { stockReceived: { id: submissionId } } }
+    );
+
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -109,6 +136,19 @@ router.post('/:projectId/:submissionId/approve', auth, async (req, res) => {
       userComment:  approvalItems[idx]?.comment  ?? '',
     }));
     await doc.save();
+
+    // Sync approval to Project.stockReceived embedded array
+    await Project.findOneAndUpdate(
+      { id: req.params.projectId, 'stockReceived.id': req.params.submissionId },
+      {
+        $set: {
+          'stockReceived.$.approvalStatus': 'approved',
+          'stockReceived.$.approvedAt':     doc.approvedAt,
+          'stockReceived.$.approvedBy':     approvedBy,
+          'stockReceived.$.items':          doc.items,
+        },
+      }
+    );
 
     const { submissionId, _id, __v, ...out } = doc.toObject();
     res.json({ id: submissionId, ...out });

@@ -125,6 +125,27 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// PUT /api/auth/change-password  — verify current password then set new one
+router.put('/change-password', auth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'All fields required' });
+    if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+
+    const user = await User.findOne({ id: req.user.id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const match = await bcrypt.compare(currentPassword.trim(), user.password);
+    if (!match) return res.status(400).json({ error: 'Current password is incorrect' });
+
+    const hashed = await bcrypt.hash(newPassword.trim(), 10);
+    await User.updateOne({ _id: user._id }, { password: hashed });
+    res.json({ message: 'Password changed successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/auth/me
 router.get('/me', auth, async (req, res) => {
   try {

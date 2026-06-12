@@ -100,6 +100,14 @@ export function clearUsers() { /* no-op */ }
    PASSWORD RESET
    ══════════════════════════════════════════════════ */
 
+export async function changePassword(currentPassword, newPassword) {
+  try {
+    return await api.put('/auth/change-password', { currentPassword, newPassword });
+  } catch (err) {
+    throw new Error(err.message || 'Failed to change password');
+  }
+}
+
 export async function forgotPassword(username) {
   try {
     return await api.post('/auth/forgot-password', { username: username.trim().toLowerCase() });
