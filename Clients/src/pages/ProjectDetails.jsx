@@ -11,6 +11,7 @@ import {
 import { getCurrentUser } from '../services/loginDb';
 import { useProjects }    from '../contexts/ProjectsContext';
 import { useAuth }        from '../contexts/AuthContext';
+import ProfileDrawer      from '../components/common/ProfileDrawer';
 
 const STATUS_STYLE = {
   Active:              { bg: '#ECFDF5', color: '#10B981', border: 'rgba(16,185,129,0.2)' },
@@ -301,7 +302,7 @@ const StockUsedModal = ({ project, stockReceived, stockUsed, onSave, onClose }) 
 
 const ProjectDetails = () => {
   const { projectId }  = useParams();
-  const { user: ctxUser, logout } = useAuth();
+  const { user: ctxUser, logout, login } = useAuth();
   const { projects, stockReceived: allReceived, stockUsed: allUsed, approveSubmission, addStockUsed } = useProjects();
   const currentUser = ctxUser || getCurrentUser();
 
@@ -310,6 +311,7 @@ const ProjectDetails = () => {
   const [expandedIds, setExpandedIds]     = useState(new Set());
   const [approvalDraft, setApprovalDraft] = useState({});
   const [usedModalOpen, setUsedModalOpen] = useState(false);
+  const [profileOpen,  setProfileOpen]   = useState(false);
 
   /* ── Stock Received filters ── */
   const [sortOrder,      setSortOrder]      = useState('newest');
@@ -414,14 +416,26 @@ const ProjectDetails = () => {
             <div style={{ color: 'rgba(199,210,254,0.55)', fontSize: 11 }}>{project.id} · {project.location}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Profile avatar button */}
+          <button
+            onClick={() => setProfileOpen(true)}
+            title="My Profile"
+            style={{ background: 'rgba(255,255,255,0.1)', border: '1.5px solid rgba(255,255,255,0.18)', borderRadius: '50%', width: 40, height: 40, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, transition: 'all 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; }}
+          >
+            {currentUser?.avatar
+              ? <img src={currentUser.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>{(currentUser?.name || currentUser?.username || 'U').slice(0, 2).toUpperCase()}</span>}
+          </button>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: 'rgba(199,210,254,0.9)', fontSize: 13, fontWeight: 600 }}>{currentUser?.username}</div>
-            <div style={{ color: 'rgba(199,210,254,0.45)', fontSize: 11 }}>User</div>
+            <div style={{ color: 'rgba(199,210,254,0.9)', fontSize: 13, fontWeight: 600 }}>{currentUser?.name || currentUser?.username}</div>
+            <div style={{ color: 'rgba(199,210,254,0.45)', fontSize: 11 }}>Tap avatar to edit profile</div>
           </div>
           <button
             onClick={logout}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'rgba(252,165,165,0.9)', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'rgba(252,165,165,0.9)', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', marginLeft: 4 }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
           >
@@ -904,6 +918,16 @@ const ProjectDetails = () => {
         )}
 
       </div>
+
+      {/* ── Profile Drawer ── */}
+      {profileOpen && currentUser && (
+        <ProfileDrawer
+          user={currentUser}
+          onClose={() => setProfileOpen(false)}
+          onUpdate={(updated) => login(updated)}
+        />
+      )}
+
     </div>
   );
 };
