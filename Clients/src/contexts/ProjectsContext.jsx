@@ -5,6 +5,8 @@ import {
   deleteStockReceived, approveSubmission,
   getAllStockUsed, addStockUsed, deleteStockUsed,
   clearProjectStockUsed,
+  getAllStockReturned, addStockReturned, deleteStockReturned,
+  clearProjectStockReturned,
 } from '../services/projectsDb';
 import {
   getUsers, deleteProjectUser, createUser, deleteUser,
@@ -15,9 +17,10 @@ const ProjectsContext = createContext(null);
 export function ProjectsProvider({ children }) {
   const [projects,      setProjects]      = useState([]);
   const [users,         setUsers]         = useState([]);
-  const [stockReceived, setStockReceived] = useState({});
-  const [stockUsed,     setStockUsed]     = useState({});
-  const [loading,       setLoading]       = useState(true);
+  const [stockReceived,  setStockReceived]  = useState({});
+  const [stockUsed,      setStockUsed]      = useState({});
+  const [stockReturned,  setStockReturned]  = useState({});
+  const [loading,        setLoading]        = useState(true);
 
   // Load all data on mount.
   // stockReceived is embedded in each project document — no separate fetch needed.
@@ -27,11 +30,13 @@ export function ProjectsProvider({ children }) {
       getUsers(),
       getAllStockUsed(),
       getAllStockReceived(),
-    ]).then(([p, u, su, sr]) => {
+      getAllStockReturned(),
+    ]).then(([p, u, su, sr, srt]) => {
       setProjects(p);
       setUsers(u);
       setStockReceived(sr);
       setStockUsed(su);
+      setStockReturned(srt);
     }).catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -54,10 +59,12 @@ export function ProjectsProvider({ children }) {
     await deleteProjectUser([], id);
     // stockReceived is embedded — deleting the project removes it automatically.
     const su = await clearProjectStockUsed({}, id);
+    const srt = await clearProjectStockReturned({}, id);
     setProjects((prev) => prev.filter((p) => p.id !== id));
     setUsers((prev)    => prev.filter((u) => u.projectId !== id));
     setStockReceived((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setStockUsed(su);
+    setStockReturned(srt);
   }, []);
 
   /* ── Stock Received ────────────────────────────── */
@@ -109,6 +116,18 @@ export function ProjectsProvider({ children }) {
     setStockUsed(result);
   }, []);
 
+  /* ── Stock Returned ────────────────────────────── */
+
+  const addStockReturnedFn = useCallback(async (projectId, formData) => {
+    const result = await addStockReturned({}, projectId, formData);
+    setStockReturned(result);
+  }, []);
+
+  const deleteStockReturnedFn = useCallback(async (projectId, recordId) => {
+    const result = await deleteStockReturned({}, projectId, recordId);
+    setStockReturned(result);
+  }, []);
+
   /* ── Expose users refresh ─────────────────────── */
 
   const refreshUsers = useCallback(async () => {
@@ -121,6 +140,7 @@ export function ProjectsProvider({ children }) {
     users,
     stockReceived,
     stockUsed,
+    stockReturned,
     loading,
     addProject:          addProjectFn,
     updateProject:       updateProjectFn,
@@ -131,6 +151,8 @@ export function ProjectsProvider({ children }) {
     approveSubmission:   approveSubmissionFn,
     addStockUsed:        addStockUsedFn,
     deleteStockUsed:     deleteStockUsedFn,
+    addStockReturned:    addStockReturnedFn,
+    deleteStockReturned: deleteStockReturnedFn,
     createUser:          createUserFn,
     deleteUser:          deleteUserFn,
     refreshUsers,

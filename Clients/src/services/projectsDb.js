@@ -98,6 +98,34 @@ export async function clearProjectStockUsed(_all, projectId) {
 }
 
 /* ══════════════════════════════════════════════════
+   STOCK RETURNED
+   ══════════════════════════════════════════════════ */
+
+export async function getAllStockReturned() {
+  return api.get('/stock-returned');
+}
+
+export async function getStockReturned(projectId) {
+  return api.get(`/stock-returned/${projectId}`);
+}
+
+export async function addStockReturned(_all, projectId, formData) {
+  await api.post(`/stock-returned/${projectId}`, formData);
+  return getAllStockReturned();
+}
+
+export async function deleteStockReturned(_all, projectId, recordId) {
+  await api.delete(`/stock-returned/${projectId}/${recordId}`);
+  return getAllStockReturned();
+}
+
+export async function clearProjectStockReturned(_all, projectId) {
+  const records = await getStockReturned(projectId);
+  await Promise.all(records.map((r) => api.delete(`/stock-returned/${projectId}/${r.id}`)));
+  return getAllStockReturned();
+}
+
+/* ══════════════════════════════════════════════════
    SNAPSHOT EXPORT
    ══════════════════════════════════════════════════ */
 

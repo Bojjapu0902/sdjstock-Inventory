@@ -18,6 +18,7 @@ app.use('/api/wastage',        require('./routes/wastage'));
 app.use('/api/projects',       require('./routes/projects'));
 app.use('/api/stock-received', require('./routes/stockReceived'));
 app.use('/api/stock-used',     require('./routes/stockUsed'));
+app.use('/api/stock-returned', require('./routes/stockReturned'));
 app.use('/api/stock-history',  require('./routes/stockHistory'));
 app.use('/api/users',          require('./routes/users'));
 
