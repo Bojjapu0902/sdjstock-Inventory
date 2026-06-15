@@ -1,11 +1,11 @@
 import './Profile.css';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   MdPerson, MdEdit, MdSave, MdClose,
   MdEmail, MdPhone, MdBadge, MdShield,
   MdCalendarToday, MdAdminPanelSettings,
   MdVisibility, MdVisibilityOff, MdLock,
-  MdCheckCircle, MdError,
+  MdCheckCircle, MdError, MdCameraAlt, MdDeleteForever,
 } from 'react-icons/md';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
@@ -27,6 +27,29 @@ const Toast = ({ msg, type, onDone }) => {
     </div>
   );
 };
+
+/* ── Avatar compression helper ──────────────────────────── */
+function compressAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const SIZE = 200;
+        const scale = Math.min(SIZE / img.width, SIZE / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 /* ── Password strength helper ────────────────────────────── */
 function pwStrength(pw) {
@@ -51,6 +74,10 @@ function pwStrength(pw) {
    ════════════════════════════════════════════════════════ */
 const Profile = () => {
   const { user, login } = useAuth();
+
+  /* ── Avatar state ── */
+  const fileInputRef    = useRef(null);
+  const [avatarLoading, setAvatarLoading] = useState(false);
 
   /* ── Personal info state ── */
   const [info, setInfo]       = useState({ name: '', email: '', phone: '' });
@@ -119,6 +146,39 @@ const Profile = () => {
     }
   };
 
+  /* ── Avatar upload ── */
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast('Please select an image file.', 'error'); return; }
+    if (file.size > 5 * 1024 * 1024)    { showToast('Image must be under 5 MB.', 'error');    return; }
+    setAvatarLoading(true);
+    try {
+      const base64 = await compressAvatar(file);
+      await api.put(`/users/${user.id}`, { avatar: base64 });
+      login({ ...user, avatar: base64 });
+      showToast('Profile photo updated.');
+    } catch {
+      showToast('Failed to update photo.', 'error');
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setAvatarLoading(true);
+    try {
+      await api.put(`/users/${user.id}`, { avatar: '' });
+      login({ ...user, avatar: '' });
+      showToast('Profile photo removed.');
+    } catch {
+      showToast('Failed to remove photo.', 'error');
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
+
   const strength = pwStrength(pw.newPw);
   const initials = (user?.name || user?.username || 'AU').slice(0, 2).toUpperCase();
   const isAdmin  = user?.role === 'Admin';
@@ -154,10 +214,40 @@ const Profile = () => {
 
         {/* Avatar */}
         <div className="profile-avatar-wrap">
-          <div className="profile-avatar">{initials}</div>
-          <div className="profile-avatar-edit" title="Change photo">
-            <MdEdit style={{ fontSize: 13 }} />
+          <div className="profile-avatar">
+            {user?.avatar
+              ? <img src={user.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+              : initials}
+            {avatarLoading && (
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span className="spinner-sm" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} />
+              </div>
+            )}
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleAvatarChange}
+          />
+          <div
+            className="profile-avatar-edit"
+            title="Change photo"
+            onClick={() => !avatarLoading && fileInputRef.current.click()}
+            style={{ cursor: 'pointer' }}
+          >
+            <MdCameraAlt style={{ fontSize: 13 }} />
+          </div>
+          {user?.avatar && !avatarLoading && (
+            <div
+              title="Remove photo"
+              onClick={handleRemoveAvatar}
+              style={{ position: 'absolute', bottom: 2, left: 2, width: 22, height: 22, borderRadius: '50%', background: '#EF4444', border: '2px solid white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 1 }}
+            >
+              <MdDeleteForever style={{ fontSize: 12, color: 'white' }} />
+            </div>
+          )}
         </div>
 
         {/* Name / role */}

@@ -6,6 +6,7 @@ import {
   MdInbox, MdOutbox, MdLogout, MdRestaurant,
   MdKeyboardArrowDown, MdKeyboardArrowUp, MdInfo,
   MdCheckCircle, MdLock, MdFilterList, MdSwapVert, MdClose,
+  MdAdd,
 } from 'react-icons/md';
 import { getCurrentUser } from '../services/loginDb';
 import { useProjects }    from '../contexts/ProjectsContext';
@@ -17,16 +18,298 @@ const STATUS_STYLE = {
   'Under Maintenance': { bg: '#FFFBEB', color: '#F59E0B', border: 'rgba(245,158,11,0.2)' },
 };
 
+/* ════════════════════════════════════════════════════════
+   STOCK USED MODAL
+   ════════════════════════════════════════════════════════ */
+const StockUsedModal = ({ project, stockReceived, stockUsed, onSave, onClose }) => {
+  const now = new Date();
+  const [date,      setDate]      = useState(now.toISOString().split('T')[0]);
+  const [purpose,   setPurpose]   = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [submitErr, setSubmitErr] = useState('');
+  const [selections, setSelections] = useState({});
+
+  /* Build pool of available stock from approved deliveries */
+  const availablePool = useMemo(() => {
+    const receivedMap = {};
+    (stockReceived || [])
+      .filter((s) => s.approvalStatus === 'approved')
+      .forEach((sub) => {
+        (sub.items || []).forEach((it) => {
+          const key = it.itemId || it.itemName;
+          if (!receivedMap[key]) {
+            receivedMap[key] = {
+              itemId:   it.itemId   || '',
+              itemName: it.itemName,
+              category: it.category || '',
+              unit:     it.unit     || '',
+              totalReceived: 0,
+            };
+          }
+          receivedMap[key].totalReceived += Number(it.quantity || 0);
+        });
+      });
+
+    const usedMap = {};
+    (stockUsed || []).forEach((r) => {
+      usedMap[r.itemName] = (usedMap[r.itemName] || 0) + Number(r.quantity || 0);
+    });
+
+    return Object.values(receivedMap).map((it) => ({
+      ...it,
+      alreadyUsed: usedMap[it.itemName] || 0,
+      available:   it.totalReceived - (usedMap[it.itemName] || 0),
+    }));
+  }, [stockReceived, stockUsed]);
+
+  /* Initialise selection rows when pool is ready */
+  React.useEffect(() => {
+    const sel = {};
+    availablePool.forEach((it) => {
+      const key = it.itemId || it.itemName;
+      sel[key] = { checked: false, qty: '', notes: '' };
+    });
+    setSelections(sel);
+  }, [availablePool.length]); // eslint-disable-line
+
+  const setChecked = (key, val) => setSelections((p) => ({ ...p, [key]: { ...p[key], checked: val } }));
+  const setQty     = (key, val) => setSelections((p) => ({ ...p, [key]: { ...p[key], qty:     val } }));
+  const setNotes   = (key, val) => setSelections((p) => ({ ...p, [key]: { ...p[key], notes:   val } }));
+
+  const selectedItems = availablePool.filter((it) => selections[it.itemId || it.itemName]?.checked);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedItems.length) { setSubmitErr('Select at least one item.'); return; }
+    for (const it of selectedItems) {
+      const key = it.itemId || it.itemName;
+      const qty = parseFloat(selections[key]?.qty);
+      if (!(qty > 0))         { setSubmitErr(`Enter a valid quantity for: ${it.itemName}`); return; }
+      if (qty > it.available) { setSubmitErr(`"${it.itemName}" exceeds available stock (${it.available} ${it.unit}).`); return; }
+    }
+    setSubmitErr('');
+    setSaving(true);
+    try {
+      for (const it of selectedItems) {
+        const key = it.itemId || it.itemName;
+        await onSave({
+          id:       `SU-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          itemId:   it.itemId,
+          itemName: it.itemName,
+          category: it.category,
+          quantity: parseFloat(selections[key].qty),
+          unit:     it.unit,
+          purpose:  purpose.trim(),
+          date,
+          notes:    selections[key].notes || '',
+        });
+      }
+      onClose();
+    } catch (err) {
+      setSubmitErr(err.message || 'Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const tdStyle  = { padding: '9px 13px', borderBottom: '1px solid #F1F5F9' };
+  const thStyle  = { padding: '9px 13px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.4px', whiteSpace: 'nowrap', background: '#F8FAFF', borderBottom: '1px solid #E2E8F0' };
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300 }} onClick={onClose} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(900px, 96vw)', maxHeight: '90vh', background: '#fff', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', zIndex: 301, boxShadow: '0 24px 72px rgba(0,0,0,0.28)', fontFamily: "'Inter', sans-serif" }}>
+
+        {/* ── Header ── */}
+        <div style={{ background: '#1E1B4B', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+              <MdOutbox style={{ color: '#FCD34D' }} />
+            </div>
+            <div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: 15 }}>Record Stock Used</div>
+              <div style={{ color: 'rgba(199,210,254,0.6)', fontSize: 12 }}>From approved deliveries · {project.name}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: 20 }}>
+            <MdClose />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+
+          {/* ── Date + Purpose ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr', gap: 14, padding: '16px 24px', borderBottom: '1px solid #F1F5F9', flexShrink: 0, background: '#FAFBFF' }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 5 }}>Date *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #E2E8F0', borderRadius: 8, fontSize: 13.5, outline: 'none', color: '#0F172A' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 5 }}>Purpose / Used For</label>
+              <input
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+                placeholder="e.g. Site breakfast, Crew lunch, Emergency use…"
+                style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #E2E8F0', borderRadius: 8, fontSize: 13.5, outline: 'none', color: '#0F172A' }}
+              />
+            </div>
+          </div>
+
+          {/* ── Item Table ── */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {availablePool.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '52px 20px', gap: 12, textAlign: 'center', color: '#94A3B8' }}>
+                <MdInbox style={{ fontSize: 44 }} />
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>No approved stock available</div>
+                <div style={{ fontSize: 13 }}>Stock must be received and approved before you can record usage.</div>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    {['✓', 'Item Name', 'Category', 'Received', 'Already Used', 'Available', 'Qty to Record', 'Notes'].map((h) => (
+                      <th key={h} style={thStyle}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {availablePool.map((it, idx) => {
+                    const key      = it.itemId || it.itemName;
+                    const sel      = selections[key] || { checked: false, qty: '', notes: '' };
+                    const qtyNum   = parseFloat(sel.qty) || 0;
+                    const overLimit = sel.checked && qtyNum > it.available;
+                    const rowBg    = sel.checked
+                      ? (overLimit ? '#FFF5F5' : '#F0FDF4')
+                      : (idx % 2 === 0 ? '#fff' : '#FAFBFF');
+
+                    return (
+                      <tr key={key} style={{ background: rowBg }}>
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={sel.checked}
+                            onChange={(e) => setChecked(key, e.target.checked)}
+                            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#F59E0B' }}
+                          />
+                        </td>
+                        <td style={{ ...tdStyle, fontWeight: 700 }}>{it.itemName}</td>
+                        <td style={tdStyle}>
+                          {it.category
+                            ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11.5, background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>{it.category}</span>
+                            : <span style={{ color: '#94A3B8' }}>—</span>}
+                        </td>
+                        <td style={{ ...tdStyle, fontWeight: 700, color: '#10B981' }}>
+                          {it.totalReceived} <span style={{ fontWeight: 400, fontSize: 11, color: '#94A3B8' }}>{it.unit}</span>
+                        </td>
+                        <td style={{ ...tdStyle, color: it.alreadyUsed > 0 ? '#EF4444' : '#94A3B8', fontWeight: it.alreadyUsed > 0 ? 700 : 400 }}>
+                          {it.alreadyUsed > 0 ? `${it.alreadyUsed} ${it.unit}` : '—'}
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{ fontWeight: 800, color: it.available > 0 ? '#4F46E5' : '#EF4444' }}>
+                            {it.available} <span style={{ fontWeight: 400, fontSize: 11, color: '#94A3B8' }}>{it.unit}</span>
+                          </span>
+                        </td>
+                        <td style={{ ...tdStyle, minWidth: 110 }}>
+                          <input
+                            type="number"
+                            min={0}
+                            max={it.available}
+                            step="any"
+                            placeholder="0"
+                            value={sel.qty}
+                            onChange={(e) => {
+                              setQty(key, e.target.value);
+                              if (e.target.value && !sel.checked) setChecked(key, true);
+                            }}
+                            style={{
+                              width: '100%', padding: '6px 8px',
+                              border: `1.5px solid ${overLimit ? '#EF4444' : (sel.checked && sel.qty) ? '#10B981' : '#E2E8F0'}`,
+                              borderRadius: 7, fontSize: 13, outline: 'none',
+                              background: overLimit ? '#FFF5F5' : '#fff',
+                            }}
+                          />
+                          {overLimit && (
+                            <div style={{ fontSize: 10.5, color: '#EF4444', marginTop: 2, fontWeight: 600 }}>
+                              Max {it.available}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ ...tdStyle, minWidth: 160 }}>
+                          <input
+                            type="text"
+                            placeholder="Optional…"
+                            value={sel.notes}
+                            onChange={(e) => setNotes(key, e.target.value)}
+                            style={{ width: '100%', padding: '6px 8px', border: '1px solid #E2E8F0', borderRadius: 7, fontSize: 12, outline: 'none', background: '#FAFAFA' }}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* ── Footer ── */}
+          <div style={{ padding: '14px 24px', borderTop: '1px solid #F1F5F9', background: '#FAFBFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', flexShrink: 0 }}>
+            <div style={{ fontSize: 12.5, color: '#64748B' }}>
+              {selectedItems.length > 0
+                ? <><span style={{ fontWeight: 700, color: '#F59E0B' }}>{selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''}</span> selected</>
+                : <span style={{ color: '#94A3B8' }}>Check the items you used and enter the quantity</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {submitErr && (
+                <div style={{ fontSize: 12, color: '#DC2626', fontWeight: 600, maxWidth: 300 }}>{submitErr}</div>
+              )}
+              <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #E2E8F0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving || selectedItems.length === 0}
+                style={{
+                  padding: '9px 22px', borderRadius: 8, border: 'none',
+                  background: selectedItems.length > 0 && !saving ? '#F59E0B' : '#E2E8F0',
+                  color: selectedItems.length > 0 && !saving ? '#fff' : '#94A3B8',
+                  fontSize: 13, fontWeight: 700,
+                  cursor: selectedItems.length > 0 && !saving ? 'pointer' : 'not-allowed',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {saving
+                  ? <><span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'pd-spin 0.7s linear infinite' }} /> Saving…</>
+                  : <><MdOutbox /> Record Usage</>}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <style>{`@keyframes pd-spin { to { transform: rotate(360deg); } }`}</style>
+    </>
+  );
+};
+
+/* ════════════════════════════════════════════════════════ */
+
 const ProjectDetails = () => {
   const { projectId }  = useParams();
   const { user: ctxUser, logout } = useAuth();
-  const { projects, stockReceived: allReceived, stockUsed: allUsed, approveSubmission } = useProjects();
+  const { projects, stockReceived: allReceived, stockUsed: allUsed, approveSubmission, addStockUsed } = useProjects();
   const currentUser = ctxUser || getCurrentUser();
 
   /* ── UI state ── */
   const [activeTab, setActiveTab]         = useState('received');
   const [expandedIds, setExpandedIds]     = useState(new Set());
   const [approvalDraft, setApprovalDraft] = useState({});
+  const [usedModalOpen, setUsedModalOpen] = useState(false);
 
   /* ── Stock Received filters ── */
   const [sortOrder,      setSortOrder]      = useState('newest');
@@ -90,6 +373,11 @@ const ProjectDetails = () => {
     approveSubmission(projectId, sub.id, draft, currentUser?.username || 'Project User');
     setApprovalDraft((prev) => { const n = { ...prev }; delete n[sub.id]; return n; });
   }, [approvalDraft, approveSubmission, projectId, currentUser]);
+
+  /* ── Record stock used ── */
+  const handleRecordUsed = useCallback(async (formData) => {
+    await addStockUsed(projectId, formData);
+  }, [addStockUsed, projectId]);
 
   /* ── security guard: must own this project ── */
   if (!currentUser || (currentUser.role !== 'Admin' && currentUser.projectId !== projectId)) {
@@ -530,11 +818,41 @@ const ProjectDetails = () => {
         {/* ══ STOCK USED — Table ══ */}
         {activeTab === 'used' && (
           <div className="fsp-card">
+            {/* Toolbar with Record button */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #F1F5F9', background: '#FAFBFF', flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0F172A' }}>Stock Used</span>
+                {stockUsed.length > 0 && (
+                  <span style={{ marginLeft: 8, padding: '2px 9px', borderRadius: 20, background: '#FFFBEB', color: '#D97706', fontSize: 12, fontWeight: 700 }}>
+                    {stockUsed.length} record{stockUsed.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setUsedModalOpen(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: '#F59E0B', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(245,158,11,0.3)', transition: 'all 0.2s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#D97706'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#F59E0B'; }}
+              >
+                <MdAdd style={{ fontSize: 18 }} /> Record Stock Used
+              </button>
+            </div>
+
             {stockUsed.length === 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 12, textAlign: 'center', color: '#94A3B8' }}>
-                <MdOutbox style={{ fontSize: 48 }} />
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#0F172A' }}>No Stock Used Records</div>
-                <div style={{ fontSize: 13 }}>No stock has been recorded as used for this project yet.</div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '52px 20px', gap: 14, textAlign: 'center', color: '#94A3B8' }}>
+                <div style={{ width: 64, height: 64, borderRadius: 18, background: '#FFFBEB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>
+                  <MdOutbox style={{ color: '#F59E0B' }} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: '#0F172A', marginBottom: 4 }}>No Stock Used Records</div>
+                  <div style={{ fontSize: 13 }}>Click <strong>Record Stock Used</strong> to log items you have consumed.</div>
+                </div>
+                <button
+                  onClick={() => setUsedModalOpen(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 20px', background: '#F59E0B', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}
+                >
+                  <MdAdd style={{ fontSize: 17 }} /> Record Stock Used
+                </button>
               </div>
             ) : (
               <>
@@ -572,6 +890,17 @@ const ProjectDetails = () => {
               </>
             )}
           </div>
+        )}
+
+        {/* ── Stock Used Modal ── */}
+        {usedModalOpen && project && (
+          <StockUsedModal
+            project={project}
+            stockReceived={stockReceived}
+            stockUsed={stockUsed}
+            onSave={handleRecordUsed}
+            onClose={() => setUsedModalOpen(false)}
+          />
         )}
 
       </div>

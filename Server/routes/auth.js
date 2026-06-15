@@ -51,6 +51,7 @@ router.post('/login', async (req, res) => {
       id: user.id, username: user.username, role: user.role,
       name: user.name, projectId: user.projectId,
       email: user.email, phone: user.phone,
+      avatar: user.avatar || '',
     };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
     res.json({ user: payload, token });

@@ -88,7 +88,11 @@ const Header = ({ onMenuClick }) => {
               onClick={() => setDropdown((d) => !d)}
               aria-expanded={dropdownOpen}
             >
-              <div className="header-avatar">{initials}</div>
+              <div className="header-avatar">
+                {user?.avatar
+                  ? <img src={user.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+                  : initials}
+              </div>
               <span className="header-user-name">{displayName}</span>
               <MdKeyboardArrowDown style={{
                 color: 'var(--text-muted)', fontSize: 18,
@@ -109,8 +113,10 @@ const Header = ({ onMenuClick }) => {
               }}>
                 <div style={{ padding: '14px 16px', background: 'var(--primary-pale)', borderBottom: '1px solid var(--border-light)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#818CF8,#4F46E5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 13 }}>
-                      {initials}
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#818CF8,#4F46E5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 13, overflow: 'hidden', flexShrink: 0 }}>
+                      {user?.avatar
+                        ? <img src={user.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        : initials}
                     </div>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{displayName}</div>
