@@ -49,13 +49,26 @@ router.post('/login', async (req, res) => {
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
     const payload = {
-      id: user.id, username: user.username, role: user.role,
-      name: user.name, projectId: user.projectId,
-      email: user.email, phone: user.phone,
-      avatar: user.avatar || '',
-    };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ user: payload, token });
+  id: user._id,
+  username: user.username,
+  role: user.role,
+  name: user.name,
+  projectId: user.projectId,
+  email: user.email,
+  phone: user.phone,
+  avatar: user.avatar || '',
+};
+    const token = jwt.sign(
+  payload,
+  process.env.JWT_SECRET,
+  {
+    expiresIn:'7d'
+  }
+);
+    res.json({
+  user:payload,
+  token
+});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -133,35 +146,143 @@ router.post('/reset-password', async (req, res) => {
 });
 
 // PUT /api/auth/change-password  — verify current password then set new one
+// PUT /api/auth/change-password  — verify current password then set new one
 router.put('/change-password', auth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'All fields required' });
-    if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
 
-    const user = await User.findOne({ id: req.user.id });
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        error: 'All fields required'
+      });
+    }
 
-    const match = await bcrypt.compare(currentPassword.trim(), user.password);
-    if (!match) return res.status(400).json({ error: 'Current password is incorrect' });
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        error: 'New password must be at least 6 characters'
+      });
+    }
 
-    const hashed = await bcrypt.hash(newPassword.trim(), 10);
-    await User.updateOne({ _id: user._id }, { password: hashed });
-    res.json({ message: 'Password changed successfully' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+
+    // FIXED: use _id instead of id
+    const user = await User.findById(req.user.id);
+
+
+    if (!user) {
+      return res.status(404).json({
+        error:'User not found'
+      });
+    }
+
+
+    const match = await bcrypt.compare(
+      currentPassword.trim(),
+      user.password
+    );
+
+
+    if (!match) {
+      return res.status(400).json({
+        error:'Current password is incorrect'
+      });
+    }
+
+
+    const hashed = await bcrypt.hash(
+      newPassword.trim(),
+      10
+    );
+
+
+    await User.updateOne(
+      { _id:user._id },
+      { password:hashed }
+    );
+
+
+    res.json({
+      message:'Password changed successfully'
+    });
+
+
+  } catch(err) {
+
+    res.status(500).json({
+      error:err.message
+    });
+
   }
 });
 
+
+
+
 // GET /api/auth/me
-router.get('/me', auth, async (req, res) => {
+router.get('/me', auth, async (req,res)=>{
+
   try {
-    const user = await User.findOne({ id: req.user.id }).select('-password');
-    if (!user) return res.status(404).json({ error: 'User not found' });
+
+
+    // FIXED: use findById()
+    const user = await User
+      .findById(req.user.id)
+      .select('-password');
+
+
+    if(!user){
+
+      return res.status(404).json({
+        error:'User not found'
+      });
+
+    }
+
+
     res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+
+
+  } catch(err){
+
+    res.status(500).json({
+      error:err.message
+    });
+
   }
+
+});
+
+// GET /api/auth/me
+router.get('/me', auth, async (req,res)=>{
+
+  try {
+
+
+    // FIXED: use findById()
+    const user = await User
+      .findById(req.user.id)
+      .select('-password');
+
+
+    if(!user){
+
+      return res.status(404).json({
+        error:'User not found'
+      });
+
+    }
+
+
+    res.json(user);
+
+
+  } catch(err){
+
+    res.status(500).json({
+      error:err.message
+    });
+
+  }
+
 });
 
 module.exports = router;
