@@ -6,7 +6,7 @@ import {
   MdInbox, MdOutbox, MdLogout, MdRestaurant,
   MdKeyboardArrowDown, MdKeyboardArrowUp, MdInfo,
   MdCheckCircle, MdLock, MdFilterList, MdSwapVert, MdClose,
-  MdAdd, MdInventory, MdUndo,
+  MdAdd, MdInventory, MdUndo, MdEdit, MdDelete,
 } from 'react-icons/md';
 import { getCurrentUser } from '../services/loginDb';
 import { useProjects }    from '../contexts/ProjectsContext';
@@ -20,9 +20,105 @@ const STATUS_STYLE = {
 };
 
 /* ════════════════════════════════════════════════════════
+   EDIT STOCK USED MODAL
+   ════════════════════════════════════════════════════════ */
+const EditStockUsedModal = ({ record, availableExtra, onSave, onClose }) => {
+  const [date,    setDate]    = useState(record.date    || '');
+  const [purpose, setPurpose] = useState(record.purpose || '');
+  const [qty,     setQty]     = useState(String(record.quantity || ''));
+  const [notes,   setNotes]   = useState(record.notes   || '');
+  const [saving,  setSaving]  = useState(false);
+  const [err,     setErr]     = useState('');
+
+  const maxQty = Number(record.quantity || 0) + (availableExtra || 0);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const q = parseFloat(qty);
+    if (!(q > 0))      { setErr('Enter a valid quantity.'); return; }
+    if (q > maxQty)    { setErr(`Max allowed: ${maxQty} ${record.unit}`); return; }
+    setErr('');
+    setSaving(true);
+    try {
+      await onSave({ ...record, date, purpose: purpose.trim(), quantity: q, notes: notes.trim() });
+      onClose();
+    } catch (ex) {
+      setErr(ex.message || 'Failed to save.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const labelStyle = { fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 5 };
+  const inputStyle = { width: '100%', padding: '8px 10px', border: '1.5px solid #E2E8F0', borderRadius: 8, fontSize: 13.5, outline: 'none', color: '#0F172A', boxSizing: 'border-box' };
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300 }} onClick={onClose} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(520px, 96vw)', background: '#fff', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', zIndex: 301, boxShadow: '0 24px 72px rgba(0,0,0,0.28)', fontFamily: "'Inter', sans-serif" }}>
+
+        {/* Header */}
+        <div style={{ background: '#F59E0B', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+              <MdEdit style={{ color: '#fff' }} />
+            </div>
+            <div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: 15 }}>Edit Stock Used Record</div>
+              <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>{record.itemName} · {record.unit}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: 20 }}>
+            <MdClose />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label style={labelStyle}>Date *</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Quantity * <span style={{ color: '#94A3B8', fontWeight: 400 }}>(max {maxQty} {record.unit})</span></label>
+              <input
+                type="number" min={0.01} max={maxQty} step="any"
+                value={qty} onChange={(e) => setQty(e.target.value)}
+                required style={inputStyle}
+              />
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Purpose / Used For</label>
+            <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Site breakfast, Crew lunch…" style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Notes</label>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional…" style={inputStyle} />
+          </div>
+
+          {err && <div style={{ fontSize: 12.5, color: '#DC2626', fontWeight: 600, padding: '8px 12px', background: '#FEF2F2', borderRadius: 8 }}>{err}</div>}
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>
+            <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #E2E8F0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: saving ? '#E2E8F0' : '#F59E0B', color: saving ? '#94A3B8' : '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {saving
+                ? <><span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'pd-spin 0.7s linear infinite' }} /> Saving…</>
+                : <><MdEdit /> Save Changes</>}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+};
+
+/* ════════════════════════════════════════════════════════
    STOCK USED MODAL
    ════════════════════════════════════════════════════════ */
-const StockUsedModal = ({ project, stockReceived, stockUsed, onSave, onClose }) => {
+const StockUsedModal = ({ project, stockReceived, stockUsed, stockReturned, onSave, onClose }) => {
   const now = new Date();
   const [date,      setDate]      = useState(now.toISOString().split('T')[0]);
   const [purpose,   setPurpose]   = useState('');
@@ -30,7 +126,7 @@ const StockUsedModal = ({ project, stockReceived, stockUsed, onSave, onClose }) 
   const [submitErr, setSubmitErr] = useState('');
   const [selections, setSelections] = useState({});
 
-  /* Build pool of available stock from approved deliveries */
+  /* Build pool of available stock: approved received − used − returned */
   const availablePool = useMemo(() => {
     const receivedMap = {};
     (stockReceived || [])
@@ -56,12 +152,20 @@ const StockUsedModal = ({ project, stockReceived, stockUsed, onSave, onClose }) 
       usedMap[r.itemName] = (usedMap[r.itemName] || 0) + Number(r.quantity || 0);
     });
 
-    return Object.values(receivedMap).map((it) => ({
-      ...it,
-      alreadyUsed: usedMap[it.itemName] || 0,
-      available:   it.totalReceived - (usedMap[it.itemName] || 0),
-    }));
-  }, [stockReceived, stockUsed]);
+    const returnedMap = {};
+    (stockReturned || []).forEach((r) => {
+      returnedMap[r.itemName] = (returnedMap[r.itemName] || 0) + Number(r.quantity || 0);
+    });
+
+    return Object.values(receivedMap)
+      .map((it) => ({
+        ...it,
+        alreadyUsed:     usedMap[it.itemName]     || 0,
+        alreadyReturned: returnedMap[it.itemName] || 0,
+        available:       it.totalReceived - (usedMap[it.itemName] || 0) - (returnedMap[it.itemName] || 0),
+      }))
+      .filter((it) => it.available > 0);   // hide exhausted items
+  }, [stockReceived, stockUsed, stockReturned]);
 
   /* Initialise selection rows when pool is ready */
   React.useEffect(() => {
@@ -91,18 +195,20 @@ const StockUsedModal = ({ project, stockReceived, stockUsed, onSave, onClose }) 
     setSubmitErr('');
     setSaving(true);
     try {
+      const submissionId = `SU-BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
       for (const it of selectedItems) {
         const key = it.itemId || it.itemName;
         await onSave({
-          id:       `SU-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          itemId:   it.itemId,
-          itemName: it.itemName,
-          category: it.category,
-          quantity: parseFloat(selections[key].qty),
-          unit:     it.unit,
-          purpose:  purpose.trim(),
+          id:           `SU-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          submissionId,
+          itemId:       it.itemId,
+          itemName:     it.itemName,
+          category:     it.category,
+          quantity:     parseFloat(selections[key].qty),
+          unit:         it.unit,
+          purpose:      purpose.trim(),
           date,
-          notes:    selections[key].notes || '',
+          notes:        selections[key].notes || '',
         });
       }
       onClose();
@@ -174,7 +280,7 @@ const StockUsedModal = ({ project, stockReceived, stockUsed, onSave, onClose }) 
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr>
-                    {['✓', 'Item Name', 'Category', 'Received', 'Already Used', 'Available', 'Qty to Record', 'Notes'].map((h) => (
+                    {['✓', 'Item Name', 'Category', 'Received', 'Used', 'Returned', 'Inhouse Available', 'Qty to Record', 'Notes'].map((h) => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -210,6 +316,9 @@ const StockUsedModal = ({ project, stockReceived, stockUsed, onSave, onClose }) 
                         </td>
                         <td style={{ ...tdStyle, color: it.alreadyUsed > 0 ? '#EF4444' : '#94A3B8', fontWeight: it.alreadyUsed > 0 ? 700 : 400 }}>
                           {it.alreadyUsed > 0 ? `${it.alreadyUsed} ${it.unit}` : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, color: it.alreadyReturned > 0 ? '#7C3AED' : '#94A3B8', fontWeight: it.alreadyReturned > 0 ? 700 : 400 }}>
+                          {it.alreadyReturned > 0 ? `${it.alreadyReturned} ${it.unit}` : '—'}
                         </td>
                         <td style={tdStyle}>
                           <span style={{ fontWeight: 800, color: it.available > 0 ? '#4F46E5' : '#EF4444' }}>
@@ -469,6 +578,100 @@ const StockReturnedModal = ({ project, availablePool, onSave, onClose }) => {
                   : <><MdUndo /> Confirm Return</>}
               </button>
             </div>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+};
+
+/* ════════════════════════════════════════════════════════
+   EDIT STOCK RETURNED MODAL
+   ════════════════════════════════════════════════════════ */
+const EditStockReturnedModal = ({ record, maxQty, onSave, onClose }) => {
+  const [date,   setDate]   = useState(record.date   || '');
+  const [reason, setReason] = useState(record.reason || '');
+  const [qty,    setQty]    = useState(String(record.quantity || ''));
+  const [notes,  setNotes]  = useState(record.notes  || '');
+  const [saving, setSaving] = useState(false);
+  const [err,    setErr]    = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const q = parseFloat(qty);
+    if (!(q > 0))   { setErr('Enter a valid quantity.'); return; }
+    if (q > maxQty) { setErr(`Max allowed: ${maxQty} ${record.unit}`); return; }
+    setErr('');
+    setSaving(true);
+    try {
+      await onSave({ ...record, date, reason: reason.trim(), quantity: q, notes: notes.trim() });
+      onClose();
+    } catch (ex) {
+      setErr(ex.message || 'Failed to save.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const labelStyle = { fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 5 };
+  const inputStyle = { width: '100%', padding: '8px 10px', border: '1.5px solid #E2E8F0', borderRadius: 8, fontSize: 13.5, outline: 'none', color: '#0F172A', boxSizing: 'border-box' };
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300 }} onClick={onClose} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(520px, 96vw)', background: '#fff', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', zIndex: 301, boxShadow: '0 24px 72px rgba(0,0,0,0.28)', fontFamily: "'Inter', sans-serif" }}>
+
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+              <MdEdit style={{ color: '#DDD6FE' }} />
+            </div>
+            <div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: 15 }}>Edit Stock Returned Record</div>
+              <div style={{ color: 'rgba(221,214,254,0.7)', fontSize: 12 }}>{record.itemName} · {record.unit}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: 20 }}>
+            <MdClose />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label style={labelStyle}>Date *</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Quantity * <span style={{ color: '#94A3B8', fontWeight: 400 }}>(max {maxQty} {record.unit})</span></label>
+              <input
+                type="number" min={0.01} max={maxQty} step="any"
+                value={qty} onChange={(e) => setQty(e.target.value)}
+                required style={inputStyle}
+              />
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Reason for Return</label>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Project completed, excess stock…" style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Notes</label>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional…" style={inputStyle} />
+          </div>
+
+          {err && <div style={{ fontSize: 12.5, color: '#DC2626', fontWeight: 600, padding: '8px 12px', background: '#FEF2F2', borderRadius: 8 }}>{err}</div>}
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>
+            <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #E2E8F0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: saving ? '#E2E8F0' : '#7C3AED', color: saving ? '#94A3B8' : '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {saving
+                ? <><span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'pd-spin 0.7s linear infinite' }} /> Saving…</>
+                : <><MdEdit /> Save Changes</>}
+            </button>
           </div>
         </form>
       </div>
@@ -786,7 +989,7 @@ const InhouseDetailModal = ({ item, stockReceived, stockUsed, stockReturned, onC
 const ProjectDetails = () => {
   const { projectId }  = useParams();
   const { user: ctxUser, logout, login } = useAuth();
-  const { projects, stockReceived: allReceived, stockUsed: allUsed, stockReturned: allReturned, approveSubmission, addStockUsed, addStockReturned } = useProjects();
+  const { projects, stockReceived: allReceived, stockUsed: allUsed, stockReturned: allReturned, approveSubmission, addStockUsed, updateStockUsed, deleteStockUsed, addStockReturned, updateStockReturned, deleteStockReturned } = useProjects();
   const currentUser = ctxUser || getCurrentUser();
 
   /* ── UI state ── */
@@ -795,7 +998,13 @@ const ProjectDetails = () => {
   const [expandedBundleIds, setExpandedBundleIds] = useState(new Set());
   const [approvalDraft, setApprovalDraft] = useState({});
   const [usedModalOpen,       setUsedModalOpen]       = useState(false);
+  const [editUsedRecord,      setEditUsedRecord]      = useState(null);
+  const [deleteUsedRecord,    setDeleteUsedRecord]    = useState(null);
+  const [deletingUsed,        setDeletingUsed]        = useState(false);
   const [returnedModalOpen,   setReturnedModalOpen]   = useState(false);
+  const [editReturnedRecord,  setEditReturnedRecord]  = useState(null);
+  const [deleteReturnedRecord, setDeleteReturnedRecord] = useState(null);
+  const [deletingReturned,    setDeletingReturned]    = useState(false);
   const [inhouseDetailItem,   setInhouseDetailItem]   = useState(null);
   const [profileOpen,         setProfileOpen]         = useState(false);
 
@@ -878,6 +1087,20 @@ const ProjectDetails = () => {
       .sort((a, b) => a.itemName.localeCompare(b.itemName));
   }, [stockReceived, stockUsed, stockReturned]);
 
+  /* ── Stock Used: group individual records by submissionId ── */
+  const usedGroups = useMemo(() => {
+    const map = {};
+    (stockUsed || []).forEach((r) => {
+      const sid = r.submissionId || r.id;
+      if (!map[sid]) map[sid] = { submissionId: sid, date: r.date, purpose: r.purpose, items: [] };
+      map[sid].items.push(r);
+    });
+    return Object.values(map).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [stockUsed]);
+
+  const toggleBundleExpand = useCallback((id) =>
+    setExpandedBundleIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }), []);
+
   /* Return draft array for a submission — falls back to stored per-item values */
   const getDraft = useCallback((sub) =>
     approvalDraft[sub.id] ?? (sub.items || []).map((it) => ({
@@ -918,10 +1141,34 @@ const ProjectDetails = () => {
     await addStockUsed(projectId, formData);
   }, [addStockUsed, projectId]);
 
+  /* ── Update stock used ── */
+  const handleUpdateUsed = useCallback(async (record) => {
+    await updateStockUsed(projectId, record.id, record);
+  }, [updateStockUsed, projectId]);
+
+  /* ── Delete stock used ── */
+  const handleDeleteUsed = useCallback(async (recordId) => {
+    setDeletingUsed(true);
+    try { await deleteStockUsed(projectId, recordId); }
+    finally { setDeletingUsed(false); setDeleteUsedRecord(null); }
+  }, [deleteStockUsed, projectId]);
+
   /* ── Record stock returned ── */
   const handleRecordReturned = useCallback(async (formData) => {
     await addStockReturned(projectId, formData);
   }, [addStockReturned, projectId]);
+
+  /* ── Update stock returned ── */
+  const handleUpdateReturned = useCallback(async (record) => {
+    await updateStockReturned(projectId, record.id, record);
+  }, [updateStockReturned, projectId]);
+
+  /* ── Delete stock returned ── */
+  const handleDeleteReturned = useCallback(async (recordId) => {
+    setDeletingReturned(true);
+    try { await deleteStockReturned(projectId, recordId); }
+    finally { setDeletingReturned(false); setDeleteReturnedRecord(null); }
+  }, [deleteStockReturned, projectId]);
 
   /* ── security guard: must own this project ── */
   if (!currentUser || (currentUser.role !== 'Admin' && currentUser.projectId !== projectId)) {
@@ -1054,7 +1301,7 @@ const ProjectDetails = () => {
             <MdInbox /> Stock Received <span className="page-tab-count">{stockReceived.length}</span>
           </button>
           <button className={`page-tab ${activeTab === 'used' ? 'active' : ''}`} onClick={() => setActiveTab('used')}>
-            <MdOutbox /> Stock Used <span className="page-tab-count">{stockUsed.length}</span>
+            <MdOutbox /> Stock Used <span className="page-tab-count">{usedGroups.length}</span>
           </button>
           <button className={`page-tab ${activeTab === 'inhouse' ? 'active' : ''}`} onClick={() => setActiveTab('inhouse')}>
             <MdInventory /> Stock Inhouse <span className="page-tab-count">{inhouseItems.length}</span>
@@ -1377,16 +1624,16 @@ const ProjectDetails = () => {
           </div>
         )}
 
-        {/* ══ STOCK USED — Table ══ */}
+        {/* ══ STOCK USED — Accordion ══ */}
         {activeTab === 'used' && (
           <div className="fsp-card">
-            {/* Toolbar with Record button */}
+            {/* Toolbar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #F1F5F9', background: '#FAFBFF', flexWrap: 'wrap', gap: 10 }}>
               <div>
                 <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0F172A' }}>Stock Used</span>
-                {stockUsed.length > 0 && (
+                {usedGroups.length > 0 && (
                   <span style={{ marginLeft: 8, padding: '2px 9px', borderRadius: 20, background: '#FFFBEB', color: '#D97706', fontSize: 12, fontWeight: 700 }}>
-                    {stockUsed.length} record{stockUsed.length !== 1 ? 's' : ''}
+                    {usedGroups.length} submission{usedGroups.length !== 1 ? 's' : ''}
                   </span>
                 )}
               </div>
@@ -1400,7 +1647,7 @@ const ProjectDetails = () => {
               </button>
             </div>
 
-            {stockUsed.length === 0 ? (
+            {usedGroups.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '52px 20px', gap: 14, textAlign: 'center', color: '#94A3B8' }}>
                 <div style={{ width: 64, height: 64, borderRadius: 18, background: '#FFFBEB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>
                   <MdOutbox style={{ color: '#F59E0B' }} />
@@ -1417,39 +1664,100 @@ const ProjectDetails = () => {
                 </button>
               </div>
             ) : (
-              <>
-                <div className="fsp-table-wrap">
-                  <table className="fsp-table">
-                    <thead>
-                      <tr>
-                        {['#', 'Item Name', 'Category', 'Quantity', 'Purpose / Used For', 'Date', 'Notes'].map((h) => <th key={h}>{h}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stockUsed.map((rec, idx) => (
-                        <tr key={rec.id}>
-                          <td style={{ color: '#94A3B8', fontSize: 12 }}>{idx + 1}</td>
-                          <td style={{ fontWeight: 700 }}>{rec.itemName}</td>
-                          <td>
-                            {rec.category
-                              ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11.5, background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>{rec.category}</span>
-                              : <span style={{ color: '#94A3B8', fontStyle: 'italic' }}>—</span>}
-                          </td>
-                          <td style={{ fontWeight: 700, color: '#F59E0B' }}>
-                            {rec.quantity} <span style={{ fontWeight: 400, fontSize: 11, color: '#94A3B8' }}>{rec.unit}</span>
-                          </td>
-                          <td style={{ fontSize: 12.5, color: '#475569' }}>{rec.purpose || '—'}</td>
-                          <td style={{ fontSize: 12.5, color: '#94A3B8' }}>{rec.date}</td>
-                          <td style={{ fontSize: 12, color: '#94A3B8' }}>{rec.notes || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {usedGroups.map((group, gIdx) => {
+                  const isOpen   = expandedBundleIds.has(group.submissionId);
+                  const totalQty = group.items.reduce((s, r) => s + Number(r.quantity || 0), 0);
+                  const unit     = group.items[0]?.unit || '';
+                  return (
+                    <div key={group.submissionId} style={{ borderRadius: 12, border: `1.5px solid ${isOpen ? '#F59E0B' : '#E2E8F0'}`, overflow: 'hidden', transition: 'border-color 0.2s' }}>
+                      {/* Card header — click to expand */}
+                      <div
+                        onClick={() => toggleBundleExpand(group.submissionId)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer', background: isOpen ? '#FFFBEB' : '#fff', transition: 'background 0.2s', flexWrap: 'wrap' }}
+                      >
+                        {isOpen ? <MdKeyboardArrowUp style={{ color: '#F59E0B', fontSize: 20, flexShrink: 0 }} /> : <MdKeyboardArrowDown style={{ color: '#94A3B8', fontSize: 20, flexShrink: 0 }} />}
+                        {/* Submission index badge */}
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: isOpen ? '#F59E0B' : '#F1F5F9', color: isOpen ? '#fff' : '#94A3B8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                          {usedGroups.length - gIdx}
+                        </div>
+                        {/* Date */}
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap' }}>{group.date}</span>
+                        {/* Purpose */}
+                        {group.purpose && (
+                          <span style={{ fontSize: 12.5, color: '#475569', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {group.purpose}
+                          </span>
+                        )}
+                        {/* Item count badge */}
+                        <span style={{ marginLeft: 'auto', padding: '2px 9px', borderRadius: 20, background: '#F1F5F9', color: '#475569', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {group.items.length} item{group.items.length !== 1 ? 's' : ''}
+                        </span>
+                        {/* Total qty badge */}
+                        <span style={{ padding: '2px 9px', borderRadius: 20, background: '#FFFBEB', color: '#D97706', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {totalQty} {unit}
+                        </span>
+                      </div>
+
+                      {/* Expanded item list */}
+                      {isOpen && (
+                        <div style={{ borderTop: '1px solid #FEF3C7', background: '#FFFDF5' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ background: '#FEF9EE' }}>
+                                {['#', 'Item Name', 'Category', 'Quantity', 'Notes', 'Actions'].map((h) => (
+                                  <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid #FDE68A', whiteSpace: 'nowrap' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.items.map((rec, rIdx) => {
+                                const inhouseBalance = inhouseItems.find((it) => it.key === (rec.itemId || rec.itemName))?.balance || 0;
+                                return (
+                                  <tr key={rec.id} style={{ borderBottom: '1px solid #FEF3C7' }}>
+                                    <td style={{ padding: '9px 14px', color: '#94A3B8', fontSize: 12 }}>{rIdx + 1}</td>
+                                    <td style={{ padding: '9px 14px', fontWeight: 700, fontSize: 13, color: '#0F172A' }}>{rec.itemName}</td>
+                                    <td style={{ padding: '9px 14px' }}>
+                                      {rec.category
+                                        ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11.5, background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>{rec.category}</span>
+                                        : <span style={{ color: '#94A3B8', fontStyle: 'italic' }}>—</span>}
+                                    </td>
+                                    <td style={{ padding: '9px 14px', fontWeight: 700, color: '#F59E0B', fontSize: 13 }}>
+                                      {rec.quantity} <span style={{ fontWeight: 400, fontSize: 11, color: '#94A3B8' }}>{rec.unit}</span>
+                                    </td>
+                                    <td style={{ padding: '9px 14px', fontSize: 12, color: '#94A3B8' }}>{rec.notes || '—'}</td>
+                                    <td style={{ padding: '9px 14px' }}>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setEditUsedRecord({ ...rec, _availableExtra: inhouseBalance }); }}
+                                          title="Edit record"
+                                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: '1px solid #FCD34D', background: '#FFFBEB', color: '#D97706', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                        >
+                                          <MdEdit style={{ fontSize: 14 }} /> Edit
+                                        </button>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setDeleteUsedRecord(rec); }}
+                                          title="Delete record"
+                                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                        >
+                                          <MdDelete style={{ fontSize: 14 }} /> Delete
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div style={{ paddingTop: 8, fontSize: 12.5, color: '#94A3B8', textAlign: 'right' }}>
+                  {usedGroups.length} submission{usedGroups.length !== 1 ? 's' : ''} · {stockUsed.reduce((s, r) => s + Number(r.quantity || 0), 0)} units consumed total
                 </div>
-                <div style={{ padding: '12px 20px', borderTop: '1px solid #F1F5F9', fontSize: 12.5, color: '#94A3B8' }}>
-                  {stockUsed.length} record{stockUsed.length !== 1 ? 's' : ''} · {stockUsed.reduce((s, r) => s + Number(r.quantity || 0), 0)} units consumed
-                </div>
-              </>
+              </div>
             )}
           </div>
         )}
@@ -1632,30 +1940,52 @@ const ProjectDetails = () => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr>
-                          {['#', 'Item Name', 'Category', 'Qty Returned', 'Reason', 'Date', 'Returned By', 'Notes'].map((h) => (
+                          {['#', 'Item Name', 'Category', 'Qty Returned', 'Reason', 'Date', 'Returned By', 'Notes', 'Actions'].map((h) => (
                             <th key={h} style={thS}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {stockReturned.map((rec, idx) => (
-                          <tr key={rec.id || idx} style={{ background: idx % 2 === 0 ? '#fff' : '#FAFBFF' }}>
-                            <td style={{ ...tdS, color: '#94A3B8', fontSize: 12 }}>{idx + 1}</td>
-                            <td style={{ ...tdS, fontWeight: 700 }}>{rec.itemName}</td>
-                            <td style={tdS}>
-                              {rec.category
-                                ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11.5, background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>{rec.category}</span>
-                                : <span style={{ color: '#94A3B8', fontStyle: 'italic' }}>—</span>}
-                            </td>
-                            <td style={{ ...tdS, fontWeight: 700, color: '#7C3AED' }}>
-                              {rec.quantity} <span style={{ fontWeight: 400, fontSize: 11, color: '#94A3B8' }}>{rec.unit}</span>
-                            </td>
-                            <td style={{ ...tdS, fontSize: 12.5, color: '#475569' }}>{rec.reason || '—'}</td>
-                            <td style={{ ...tdS, fontSize: 12.5, color: '#94A3B8' }}>{rec.date}</td>
-                            <td style={{ ...tdS, fontSize: 12.5, color: '#64748B' }}>{rec.returnedBy || '—'}</td>
-                            <td style={{ ...tdS, fontSize: 12, color: '#94A3B8' }}>{rec.notes || '—'}</td>
-                          </tr>
-                        ))}
+                        {stockReturned.map((rec, idx) => {
+                          const inhouseBalance = inhouseItems.find((it) => it.key === (rec.itemId || rec.itemName))?.balance || 0;
+                          const editMaxQty = Number(rec.quantity || 0) + inhouseBalance;
+                          return (
+                            <tr key={rec.id || idx} style={{ background: idx % 2 === 0 ? '#fff' : '#FAFBFF' }}>
+                              <td style={{ ...tdS, color: '#94A3B8', fontSize: 12 }}>{idx + 1}</td>
+                              <td style={{ ...tdS, fontWeight: 700 }}>{rec.itemName}</td>
+                              <td style={tdS}>
+                                {rec.category
+                                  ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11.5, background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>{rec.category}</span>
+                                  : <span style={{ color: '#94A3B8', fontStyle: 'italic' }}>—</span>}
+                              </td>
+                              <td style={{ ...tdS, fontWeight: 700, color: '#7C3AED' }}>
+                                {rec.quantity} <span style={{ fontWeight: 400, fontSize: 11, color: '#94A3B8' }}>{rec.unit}</span>
+                              </td>
+                              <td style={{ ...tdS, fontSize: 12.5, color: '#475569' }}>{rec.reason || '—'}</td>
+                              <td style={{ ...tdS, fontSize: 12.5, color: '#94A3B8' }}>{rec.date}</td>
+                              <td style={{ ...tdS, fontSize: 12.5, color: '#64748B' }}>{rec.returnedBy || '—'}</td>
+                              <td style={{ ...tdS, fontSize: 12, color: '#94A3B8' }}>{rec.notes || '—'}</td>
+                              <td style={tdS}>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <button
+                                    onClick={() => setEditReturnedRecord({ ...rec, _maxQty: editMaxQty })}
+                                    title="Edit record"
+                                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: '1px solid #C4B5FD', background: '#F5F3FF', color: '#7C3AED', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                  >
+                                    <MdEdit style={{ fontSize: 14 }} /> Edit
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteReturnedRecord(rec)}
+                                    title="Delete record"
+                                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                  >
+                                    <MdDelete style={{ fontSize: 14 }} /> Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1674,9 +2004,65 @@ const ProjectDetails = () => {
             project={project}
             stockReceived={stockReceived}
             stockUsed={stockUsed}
+            stockReturned={stockReturned}
             onSave={handleRecordUsed}
             onClose={() => setUsedModalOpen(false)}
           />
+        )}
+
+        {/* ── Edit Stock Used Modal ── */}
+        {editUsedRecord && (
+          <EditStockUsedModal
+            record={editUsedRecord}
+            availableExtra={editUsedRecord._availableExtra || 0}
+            onSave={handleUpdateUsed}
+            onClose={() => setEditUsedRecord(null)}
+          />
+        )}
+
+        {/* ── Delete Stock Used Confirm ── */}
+        {deleteUsedRecord && (
+          <>
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400 }} onClick={() => setDeleteUsedRecord(null)} />
+            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(420px, 96vw)', background: '#fff', borderRadius: 16, zIndex: 401, boxShadow: '0 24px 72px rgba(0,0,0,0.28)', fontFamily: "'Inter', sans-serif", overflow: 'hidden' }}>
+              <div style={{ background: '#FEF2F2', padding: '20px 24px', borderBottom: '1px solid #FCA5A5' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+                    <MdDelete style={{ color: '#DC2626' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>Delete Stock Used Record?</div>
+                    <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>This action cannot be undone.</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: '16px 24px' }}>
+                <p style={{ fontSize: 13.5, color: '#0F172A', margin: '0 0 6px 0' }}>
+                  <strong>{deleteUsedRecord.itemName}</strong> — {deleteUsedRecord.quantity} {deleteUsedRecord.unit}
+                </p>
+                <p style={{ fontSize: 12.5, color: '#64748B', margin: 0 }}>
+                  {deleteUsedRecord.date}{deleteUsedRecord.purpose ? ` · ${deleteUsedRecord.purpose}` : ''}
+                </p>
+              </div>
+              <div style={{ padding: '12px 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setDeleteUsedRecord(null)}
+                  style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #E2E8F0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteUsed(deleteUsedRecord.id)}
+                  disabled={deletingUsed}
+                  style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: deletingUsed ? '#E2E8F0' : '#DC2626', color: deletingUsed ? '#94A3B8' : '#fff', fontSize: 13, fontWeight: 700, cursor: deletingUsed ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  {deletingUsed
+                    ? <><span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'pd-spin 0.7s linear infinite' }} /> Deleting…</>
+                    : <><MdDelete /> Yes, Delete</>}
+                </button>
+              </div>
+            </div>
+          </>
         )}
 
         {/* ── Stock Returned Modal ── */}
@@ -1687,6 +2073,61 @@ const ProjectDetails = () => {
             onSave={handleRecordReturned}
             onClose={() => setReturnedModalOpen(false)}
           />
+        )}
+
+        {/* ── Edit Stock Returned Modal ── */}
+        {editReturnedRecord && (
+          <EditStockReturnedModal
+            record={editReturnedRecord}
+            maxQty={editReturnedRecord._maxQty || editReturnedRecord.quantity}
+            onSave={handleUpdateReturned}
+            onClose={() => setEditReturnedRecord(null)}
+          />
+        )}
+
+        {/* ── Delete Stock Returned Confirm ── */}
+        {deleteReturnedRecord && (
+          <>
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400 }} onClick={() => setDeleteReturnedRecord(null)} />
+            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(420px, 96vw)', background: '#fff', borderRadius: 16, zIndex: 401, boxShadow: '0 24px 72px rgba(0,0,0,0.28)', fontFamily: "'Inter', sans-serif", overflow: 'hidden' }}>
+              <div style={{ background: '#FEF2F2', padding: '20px 24px', borderBottom: '1px solid #FCA5A5' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+                    <MdDelete style={{ color: '#DC2626' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>Delete Stock Returned Record?</div>
+                    <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>This action cannot be undone.</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: '16px 24px' }}>
+                <p style={{ fontSize: 13.5, color: '#0F172A', margin: '0 0 6px 0' }}>
+                  <strong>{deleteReturnedRecord.itemName}</strong> — {deleteReturnedRecord.quantity} {deleteReturnedRecord.unit}
+                </p>
+                <p style={{ fontSize: 12.5, color: '#64748B', margin: 0 }}>
+                  {deleteReturnedRecord.date}{deleteReturnedRecord.reason ? ` · ${deleteReturnedRecord.reason}` : ''}
+                </p>
+              </div>
+              <div style={{ padding: '12px 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setDeleteReturnedRecord(null)}
+                  style={{ padding: '9px 18px', borderRadius: 8, border: '1.5px solid #E2E8F0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteReturned(deleteReturnedRecord.id)}
+                  disabled={deletingReturned}
+                  style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: deletingReturned ? '#E2E8F0' : '#DC2626', color: deletingReturned ? '#94A3B8' : '#fff', fontSize: 13, fontWeight: 700, cursor: deletingReturned ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  {deletingReturned
+                    ? <><span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'pd-spin 0.7s linear infinite' }} /> Deleting…</>
+                    : <><MdDelete /> Yes, Delete</>}
+                </button>
+              </div>
+            </div>
+          </>
         )}
 
         {/* ── Inhouse Detail Modal ── */}

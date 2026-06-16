@@ -102,7 +102,7 @@ const Login = ({ onLogin }) => {
 
   const sendOtp = async () => {
     setFpError('');
-    if (!fpUsername.trim()) { setFpError('Please enter your username.'); return; }
+    if (!fpUsername.trim()) { setFpError('Please enter your username or email.'); return; }
     setFpLoading(true);
     try {
       const res = await forgotPassword(fpUsername);
@@ -427,7 +427,7 @@ const Login = ({ onLogin }) => {
               {/* ── Step progress bar (steps 1-3 only) ── */}
               {fpView !== 'pwdone' && (() => {
                 const steps = [
-                  { key: 'forgot', label: 'Username' },
+                  { key: 'forgot', label: 'Email/User' },
                   { key: 'otp',    label: 'Verify OTP' },
                   { key: 'newpw',  label: 'New Password' },
                 ];
@@ -474,10 +474,10 @@ const Login = ({ onLogin }) => {
                 <form onSubmit={handleForgotSend} noValidate>
                   <div style={{ marginBottom: 24 }}>
                     <div style={{ fontSize: 22, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.4px', marginBottom: 6 }}>Forgot password?</div>
-                    <div style={{ fontSize: 13.5, color: '#64748B', lineHeight: 1.6 }}>Enter your username and we'll send a one-time password to your registered email address.</div>
+                    <div style={{ fontSize: 13.5, color: '#64748B', lineHeight: 1.6 }}>Enter your username or email address and we'll send a one-time password to it.</div>
                   </div>
                   <div style={{ marginBottom: 18 }}>
-                    <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Username</label>
+                    <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 6 }}>Username or Email</label>
                     <div style={{ position: 'relative' }}>
                       <MdPerson style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 18, pointerEvents: 'none' }} />
                       <input
@@ -485,7 +485,7 @@ const Login = ({ onLogin }) => {
                         type="text"
                         value={fpUsername}
                         onChange={(e) => { setFpUsername(e.target.value); setFpError(''); }}
-                        placeholder="Enter your username"
+                        placeholder="Enter your username or email"
                         style={{ width: '100%', height: 46, border: '1.5px solid #E2E8F0', borderRadius: 10, padding: '0 14px 0 42px', fontSize: 14, color: '#0F172A', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
                         onFocus={(e) => { e.target.style.borderColor = '#4F46E5'; e.target.style.boxShadow = '0 0 0 3px rgba(79,70,229,0.1)'; }}
                         onBlur={(e)  => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}

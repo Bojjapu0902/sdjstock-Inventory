@@ -34,6 +34,20 @@ router.post('/:projectId', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// PUT /api/stock-used/:projectId/:recordId
+router.put('/:projectId/:recordId', auth, async (req, res) => {
+  try {
+    const doc = await SU.findOneAndUpdate(
+      { projectId: req.params.projectId, id: req.params.recordId },
+      { $set: req.body },
+      { new: true, lean: true },
+    );
+    if (!doc) return res.status(404).json({ error: 'Record not found' });
+    const { _id, __v, ...out } = doc;
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // DELETE /api/stock-used/:projectId/:recordId
 router.delete('/:projectId/:recordId', auth, async (req, res) => {
   try {

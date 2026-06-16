@@ -12,8 +12,9 @@ function makeTransporter() {
     secure: false,
     auth: {
       user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
     },
+    tls: { rejectUnauthorized: false },
   });
 }
 
@@ -64,10 +65,14 @@ router.post('/login', async (req, res) => {
 router.post('/forgot-password', async (req, res) => {
   try {
     const { username } = req.body;
-    if (!username) return res.status(400).json({ error: 'Username is required' });
+    if (!username) return res.status(400).json({ error: 'Username or email is required' });
 
-    const user = await User.findOne({ username: username.trim().toLowerCase() });
-    if (!user) return res.status(404).json({ error: 'No account found with that username' });
+    const val = username.trim().toLowerCase();
+    const isEmail = val.includes('@');
+    const user = isEmail
+      ? await User.findOne({ email: val })
+      : await User.findOne({ username: val });
+    if (!user) return res.status(404).json({ error: 'No account found with that username or email' });
     if (!user.email) return res.status(400).json({ error: 'No email address on file for this account. Contact an admin.' });
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
@@ -84,7 +89,8 @@ router.post('/forgot-password', async (req, res) => {
 
     res.json({ message: 'OTP sent', email: user.email.replace(/(.{2}).+(@.+)/, '$1***$2') });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to send OTP. Check SMTP configuration.' });
+    console.error('[forgot-password] SMTP error:', err.message);
+    res.status(500).json({ error: `Failed to send OTP: ${err.message}` });
   }
 });
 

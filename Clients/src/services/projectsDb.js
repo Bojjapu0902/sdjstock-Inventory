@@ -86,6 +86,11 @@ export async function addStockUsed(_all, projectId, formData) {
   return getAllStockUsed();
 }
 
+export async function updateStockUsed(_all, projectId, recordId, formData) {
+  await api.put(`/stock-used/${projectId}/${recordId}`, formData);
+  return getAllStockUsed();
+}
+
 export async function deleteStockUsed(_all, projectId, recordId) {
   await api.delete(`/stock-used/${projectId}/${recordId}`);
   return getAllStockUsed();
@@ -111,6 +116,11 @@ export async function getStockReturned(projectId) {
 
 export async function addStockReturned(_all, projectId, formData) {
   await api.post(`/stock-returned/${projectId}`, formData);
+  return getAllStockReturned();
+}
+
+export async function updateStockReturned(_all, projectId, recordId, formData) {
+  await api.put(`/stock-returned/${projectId}/${recordId}`, formData);
   return getAllStockReturned();
 }
 

@@ -3,9 +3,9 @@ import {
   getProjects, addProject, updateProject, deleteProject,
   getAllStockReceived, addStockReceived, updateStockReceived,
   deleteStockReceived, approveSubmission,
-  getAllStockUsed, addStockUsed, deleteStockUsed,
+  getAllStockUsed, addStockUsed, updateStockUsed, deleteStockUsed,
   clearProjectStockUsed,
-  getAllStockReturned, addStockReturned, deleteStockReturned,
+  getAllStockReturned, addStockReturned, updateStockReturned, deleteStockReturned,
   clearProjectStockReturned,
 } from '../services/projectsDb';
 import {
@@ -111,6 +111,11 @@ export function ProjectsProvider({ children }) {
     setStockUsed(result);
   }, []);
 
+  const updateStockUsedFn = useCallback(async (projectId, recordId, formData) => {
+    const result = await updateStockUsed({}, projectId, recordId, formData);
+    setStockUsed(result);
+  }, []);
+
   const deleteStockUsedFn = useCallback(async (projectId, recordId) => {
     const result = await deleteStockUsed({}, projectId, recordId);
     setStockUsed(result);
@@ -120,6 +125,11 @@ export function ProjectsProvider({ children }) {
 
   const addStockReturnedFn = useCallback(async (projectId, formData) => {
     const result = await addStockReturned({}, projectId, formData);
+    setStockReturned(result);
+  }, []);
+
+  const updateStockReturnedFn = useCallback(async (projectId, recordId, formData) => {
+    const result = await updateStockReturned({}, projectId, recordId, formData);
     setStockReturned(result);
   }, []);
 
@@ -150,8 +160,10 @@ export function ProjectsProvider({ children }) {
     deleteStockReceived: deleteStockReceivedFn,
     approveSubmission:   approveSubmissionFn,
     addStockUsed:        addStockUsedFn,
+    updateStockUsed:     updateStockUsedFn,
     deleteStockUsed:     deleteStockUsedFn,
     addStockReturned:    addStockReturnedFn,
+    updateStockReturned: updateStockReturnedFn,
     deleteStockReturned: deleteStockReturnedFn,
     createUser:          createUserFn,
     deleteUser:          deleteUserFn,
