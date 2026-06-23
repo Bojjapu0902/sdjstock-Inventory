@@ -95,3 +95,46 @@ export async function deleteProjectUser(_users, projectId) {
 
 export function saveUsers() { /* no-op: API handles persistence */ }
 export function clearUsers() { /* no-op */ }
+
+/* ══════════════════════════════════════════════════
+   PASSWORD RESET
+   ══════════════════════════════════════════════════ */
+
+export async function changePassword(currentPassword, newPassword) {
+  try {
+    return await api.put('/auth/change-password', { currentPassword, newPassword });
+  } catch (err) {
+    throw new Error(err.message || 'Failed to change password');
+  }
+}
+
+export async function forgotPassword(username) {
+  try {
+    return await api.post('/auth/forgot-password', { username: username.trim().toLowerCase() });
+  } catch (err) {
+    throw new Error(err.message || 'Failed to send OTP');
+  }
+}
+
+export async function verifyOtp(username, otp) {
+  try {
+    return await api.post('/auth/verify-otp', {
+      username: username.trim().toLowerCase(),
+      otp: otp.trim(),
+    });
+  } catch (err) {
+    throw new Error(err.message || 'OTP verification failed');
+  }
+}
+
+export async function resetPassword(username, otp, newPassword) {
+  try {
+    return await api.post('/auth/reset-password', {
+      username: username.trim().toLowerCase(),
+      otp: otp.trim(),
+      newPassword,
+    });
+  } catch (err) {
+    throw new Error(err.message || 'Failed to reset password');
+  }
+}

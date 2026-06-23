@@ -73,7 +73,7 @@ router.post('/:id/stock-records', auth, async (req, res) => {
       qty: +qty, rate: +rate, supplier, timestamp, date, time, loggedBy, notes,
       direction: 'in',
     };
-    const computed = recomputeStock([...existing.stockRecords, newRecord]);
+    const computed = recomputeStock([...(existing.stockRecords || []), newRecord]);
 
     const item = await Item.findOneAndUpdate(
       { id: req.params.id },
@@ -167,10 +167,24 @@ router.post('/bulk-deduct', auth, async (req, res) => {
   try {
     const { items } = req.body;
     const result = {};
-    for (const { itemId, quantity } of items) {
+    for (const { itemId, qty, projectId = '', projectName = '', submissionId = '', loggedBy = '', date = '', time = '', timestamp = '' } of items) {
       const item = await Item.findOne({ id: itemId });
       if (item) {
-        item.currentStock = Math.max(0, item.currentStock - Number(quantity));
+        item.currentStock = Math.max(0, item.currentStock - Number(qty));
+        item.stockRecords = item.stockRecords || [];
+        item.stockRecords.push({
+          id:           `SR-OUT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          qty:          Number(qty),
+          rate:         0,
+          direction:    'out',
+          projectId,
+          projectName,
+          submissionId,
+          loggedBy,
+          date,
+          time,
+          timestamp,
+        });
         await item.save();
         result[itemId] = item.currentStock;
       }
@@ -184,10 +198,10 @@ router.post('/bulk-restore', auth, async (req, res) => {
   try {
     const { items } = req.body;
     const result = {};
-    for (const { itemId, quantity } of items) {
+    for (const { itemId, qty } of items) {
       const item = await Item.findOne({ id: itemId });
       if (item) {
-        item.currentStock = item.currentStock + Number(quantity);
+        item.currentStock = item.currentStock + Number(qty);
         await item.save();
         result[itemId] = item.currentStock;
       }

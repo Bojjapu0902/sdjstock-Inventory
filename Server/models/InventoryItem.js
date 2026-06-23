@@ -11,9 +11,10 @@ const stockRecordSchema = new mongoose.Schema({
   loggedBy:    { type: String, default: '' },
   notes:       { type: String, default: '' },
   type:        { type: Boolean, default: true },
-  direction:   { type: String, default: 'in' },   // 'in' = stock received, 'out' = assigned to project
-  projectId:   { type: String, default: '' },
-  projectName: { type: String, default: '' },
+  direction:    { type: String, default: 'in' },   // 'in' = stock received, 'out' = assigned to project
+  projectId:    { type: String, default: '' },
+  projectName:  { type: String, default: '' },
+  submissionId: { type: String, default: '' },
 }, { _id: false });
 
 const inventoryItemSchema = new mongoose.Schema({

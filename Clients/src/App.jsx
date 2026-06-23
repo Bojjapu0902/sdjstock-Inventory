@@ -20,6 +20,7 @@ import Projects       from './pages/Projects';
 import AddItems       from './pages/AddItems';
 import ProjectDetails from './pages/ProjectDetails';
 import Users          from './pages/Users';
+import Profile        from './pages/Profile';
 
 const App = () => {
   const { user, login } = useAuth();
@@ -41,7 +42,9 @@ const App = () => {
 
           {/* Admin / operator view: full Layout with sidebar */}
           <Route path="*" element={
-            <Layout>
+            user.role === 'User' && user.projectId
+              ? <Navigate to={`/project/${user.projectId}`} replace />
+              : <Layout>
               <Routes>
                 <Route path="/"             element={<Navigate to={rootRedirect} replace />} />
                 <Route path="/inventory"    element={<Inventory />}      />
@@ -54,6 +57,7 @@ const App = () => {
                 <Route path="/settings"     element={<Settings />}       />
                 <Route path="/projects"     element={<Projects />}       />
                 <Route path="/users"        element={<Users />}          />
+                <Route path="/profile"      element={<Profile />}        />
                 <Route path="*"             element={<Navigate to="/" replace />} />
               </Routes>
             </Layout>

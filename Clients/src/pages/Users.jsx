@@ -416,13 +416,15 @@ const Users = () => {
           >
             <MdEdit />
           </button>
-          <button
-            className="users-action-btn delete"
-            title="Delete user"
-            onClick={(e) => { e.stopPropagation(); openDelete(row); }}
-          >
-            <MdDelete />
-          </button>
+          {row.role !== 'Admin' && (
+            <button
+              className="users-action-btn delete"
+              title="Delete user"
+              onClick={(e) => { e.stopPropagation(); openDelete(row); }}
+            >
+              <MdDelete />
+            </button>
+          )}
         </div>
       ),
     },

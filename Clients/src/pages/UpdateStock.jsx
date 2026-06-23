@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   MdFileDownload, MdCheckCircle, MdSystemUpdateAlt,
   MdTrendingDown, MdInventory2, MdRefresh, MdArrowUpward,
-  MdArrowDownward,
+  MdArrowDownward, MdPrint, MdEdit, MdDelete, MdClose, MdSave,
 } from 'react-icons/md';
 import {
   categories,
@@ -52,6 +52,106 @@ const exportTransactions = (data, label = 'all') => {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+};
+
+/* ── Per-record print helper ────────────────────────── */
+const printTransaction = (txn) => {
+  const isIn = txn.type === 'IN';
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Transaction Receipt – ${txn.id}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1a1a2e; padding: 32px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #4F46E5; padding-bottom: 16px; margin-bottom: 20px; }
+    .brand { font-size: 20px; font-weight: 800; color: #4F46E5; }
+    .brand-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+    .badge { display: inline-block; padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700;
+      background: ${isIn ? '#d1fae5' : '#fee2e2'}; color: ${isIn ? '#065f46' : '#991b1b'};
+      border: 1px solid ${isIn ? '#6ee7b7' : '#fca5a5'}; }
+    .title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 4px; }
+    .txn-id { font-size: 11px; color: #9ca3af; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+    .field { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; }
+    .field:nth-child(odd) { border-right: 1px solid #f3f4f6; }
+    .field-label { font-size: 10px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+    .field-value { font-size: 13.5px; font-weight: 600; color: #111827; }
+    .total-row { grid-column: span 2; background: ${isIn ? '#ecfdf5' : '#fef2f2'}; }
+    .total-row .field-value { font-size: 18px; font-weight: 800; color: ${isIn ? '#059669' : '#dc2626'}; }
+    .notes-row { grid-column: span 2; }
+    .footer { text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 14px; margin-top: 4px; }
+    @media print { body { padding: 16px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="brand">SDJ Stock</div>
+      <div class="brand-sub">Inventory Management System</div>
+    </div>
+    <div style="text-align:right">
+      <span class="badge">${isIn ? '↑ Stock In' : '↓ Stock Out'}</span>
+      <div class="txn-id" style="margin-top:6px">${txn.id}</div>
+    </div>
+  </div>
+
+  <div style="margin-bottom:16px">
+    <div class="title">${isIn ? 'Stock Receipt' : 'Usage Record'}</div>
+    <div class="txn-id">Printed on ${new Date().toLocaleString('en-IN')}</div>
+  </div>
+
+  <div class="grid">
+    <div class="field">
+      <div class="field-label">Date</div>
+      <div class="field-value">${txn.date}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Item</div>
+      <div class="field-value">${txn.item}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Category</div>
+      <div class="field-value">${txn.category}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Quantity</div>
+      <div class="field-value">${isIn ? '+' : '-'}${txn.qty} ${txn.unit}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Unit Cost</div>
+      <div class="field-value">₹${txn.unitCost.toFixed(2)} / ${txn.unit}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">${isIn ? 'Supplier' : 'Usage Type'}</div>
+      <div class="field-value">${txn.supplier || txn.usageType || '—'}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Logged By</div>
+      <div class="field-value">${txn.loggedBy || '—'}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Transaction ID</div>
+      <div class="field-value" style="font-size:12px">${txn.id}</div>
+    </div>
+    <div class="field total-row">
+      <div class="field-label">Total Value</div>
+      <div class="field-value">₹${txn.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+    </div>
+    <div class="field notes-row">
+      <div class="field-label">Notes</div>
+      <div class="field-value" style="font-weight:400;color:#374151">${txn.notes || '—'}</div>
+    </div>
+  </div>
+
+  <div class="footer">This is a system-generated receipt. No signature required.</div>
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+  const win = window.open('', '_blank', 'width=620,height=700');
+  win.document.write(html);
+  win.document.close();
 };
 
 const USAGE_TYPES = ['Kitchen Use', 'Event', 'Daily Consumption', 'Wastage', 'Other'];
@@ -168,6 +268,15 @@ const UpdateStock = () => {
   const [histType, setHistType] = useState('All');
   const [histCat, setHistCat] = useState('All Categories');
 
+  /* ── Stock Used CRUD state ──────────────────────── */
+  const [usedSearch, setUsedSearch] = useState('');
+  const [usedCat,    setUsedCat]    = useState('All Categories');
+  const [editUsage,  setEditUsage]  = useState(null);  // txn being edited
+  const [editForm,   setEditForm]   = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [deleteUsage, setDeleteUsage] = useState(null); // txn pending delete
+  const [deletingId,  setDeletingId]  = useState(null);
+
   /* ── Summary stats (this month) ─────────────────── */
   const summary = useMemo(() => {
     const m = new Date().getMonth();
@@ -259,6 +368,59 @@ const UpdateStock = () => {
     setTimeout(() => { setUsageSuccess(false); setUsageForm(USAGE_INIT); }, 1800);
   };
 
+  /* ── Stock Used edit / delete handlers ─────────── */
+  const openEditUsage = (txn) => {
+    setEditUsage(txn);
+    setEditForm({
+      date: txn.date,
+      quantity: String(txn.qty),
+      usageType: txn.usageType || 'Kitchen Use',
+      loggedBy: txn.loggedBy || '',
+      notes: txn.notes || '',
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!editUsage || !editForm.quantity) return;
+    setEditSaving(true);
+    const newQty = Number(editForm.quantity);
+    const oldQty = editUsage.qty;
+    // Net stock delta: restore old deduction, apply new one
+    const stockDelta = oldQty - newQty;
+    try {
+      await adjustStock(editUsage.itemId, stockDelta);
+      await api.put(`/stock-history/${editUsage.itemId}/${editUsage.id}`, {
+        qty: newQty,
+        timestamp: new Date(editForm.date).toISOString(),
+        usageType: editForm.usageType,
+        loggedBy: editForm.loggedBy,
+        desc: editForm.notes,
+        rate: editUsage.unitCost,
+        unit: editUsage.unit,
+        type: 'OUT',
+        itemName: editUsage.item,
+        category: editUsage.category,
+      });
+      setTransactions((prev) => prev.map((t) => t.id === editUsage.id
+        ? { ...t, date: editForm.date, qty: newQty, totalCost: +(newQty * t.unitCost).toFixed(2), usageType: editForm.usageType, loggedBy: editForm.loggedBy, notes: editForm.notes }
+        : t));
+      setEditUsage(null);
+    } catch (err) { console.error('Edit usage failed:', err); }
+    setEditSaving(false);
+  };
+
+  const handleDeleteUsage = async () => {
+    if (!deleteUsage) return;
+    setDeletingId(deleteUsage.id);
+    try {
+      await adjustStock(deleteUsage.itemId, deleteUsage.qty); // restore stock
+      await api.delete(`/stock-history/${deleteUsage.itemId}/${deleteUsage.id}`);
+      setTransactions((prev) => prev.filter((t) => t.id !== deleteUsage.id));
+      setDeleteUsage(null);
+    } catch (err) { console.error('Delete usage failed:', err); }
+    setDeletingId(null);
+  };
+
   /* ── Filtered history ───────────────────────────── */
   const filteredHistory = useMemo(() => transactions.filter((t) => {
     const q = histSearch.toLowerCase();
@@ -269,6 +431,17 @@ const UpdateStock = () => {
       && (histCat === 'All Categories' || t.category === histCat)
     );
   }), [transactions, histSearch, histType, histCat]);
+
+  /* ── Filtered stock used records ───────────────── */
+  const filteredUsed = useMemo(() => transactions.filter((t) => {
+    if (t.type !== 'OUT') return false;
+    const q = usedSearch.toLowerCase();
+    return (
+      (!usedSearch || t.item.toLowerCase().includes(q) || (t.usageType || '').toLowerCase().includes(q)
+        || (t.loggedBy || '').toLowerCase().includes(q))
+      && (usedCat === 'All Categories' || t.category === usedCat)
+    );
+  }), [transactions, usedSearch, usedCat]);
 
   /* ── Derived values ─────────────────────────────── */
   const receiveItem = items.find((i) => i.id === receiveForm.itemId);
@@ -327,6 +500,10 @@ const UpdateStock = () => {
         </button>
         <button className={`page-tab ${activeTab === 'usage' ? 'active' : ''}`} onClick={() => setActiveTab('usage')}>
           <MdArrowDownward /> Log Usage
+        </button>
+        <button className={`page-tab ${activeTab === 'used' ? 'active' : ''}`} onClick={() => setActiveTab('used')}>
+          <MdTrendingDown /> Stock Used
+          <span className="page-tab-count">{transactions.filter((t) => t.type === 'OUT').length}</span>
         </button>
         <button className={`page-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
           <MdInventory2 /> Transaction History
@@ -640,6 +817,238 @@ const UpdateStock = () => {
         </div>
       )}
 
+      {/* ══ STOCK USED TAB (CRUD) ════════════════════════════ */}
+      {activeTab === 'used' && (
+        <div className="fsp-card">
+          <div className="fsp-card-header">
+            <div>
+              <div className="fsp-card-title">Stock Used Records</div>
+              <div className="fsp-card-subtitle">View, edit, or delete stock consumption entries — inventory adjusts automatically</div>
+            </div>
+            <button className="btn-stock-update" style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => setActiveTab('usage')}>
+              <MdTrendingDown /> Log New Usage
+            </button>
+          </div>
+
+          {/* Filters */}
+          <div className="filter-toolbar">
+            <div className="filter-search">
+              <svg className="filter-search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 15, height: 15 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input type="text" placeholder="Search item, usage type, logged by…"
+                value={usedSearch} onChange={(e) => setUsedSearch(e.target.value)} />
+            </div>
+            <select className="filter-select" value={usedCat} onChange={(e) => setUsedCat(e.target.value)}>
+              {categories.map((c) => <option key={c}>{c}</option>)}
+            </select>
+            <button className="btn-icon-sm" title="Reset filters" onClick={() => { setUsedSearch(''); setUsedCat('All Categories'); }}>
+              <MdRefresh />
+            </button>
+            <span className="filter-count">{filteredUsed.length} of {transactions.filter((t) => t.type === 'OUT').length}</span>
+          </div>
+
+          {/* Table */}
+          <div className="fsp-table-wrap">
+            <table className="fsp-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Item</th>
+                  <th>Category</th>
+                  <th>Qty Used</th>
+                  <th>Unit Cost</th>
+                  <th>Total Cost</th>
+                  <th>Usage Type</th>
+                  <th>Logged By</th>
+                  <th>Notes</th>
+                  <th style={{ width: 90, textAlign: 'center' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsed.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>
+                      No stock used records found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsed.map((txn) => (
+                    <tr key={txn.id} style={{ background: 'rgba(239,68,68,0.02)' }}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{formatDate(txn.date)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{txn.id}</div>
+                      </td>
+                      <td style={{ fontWeight: 600, fontSize: 13.5 }}>{txn.item}</td>
+                      <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{txn.category}</td>
+                      <td style={{ fontWeight: 800, color: 'var(--danger)', whiteSpace: 'nowrap', fontSize: 14 }}>
+                        -{txn.qty} {txn.unit}
+                      </td>
+                      <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{formatCurrency(txn.unitCost)}</td>
+                      <td style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--danger)' }}>{formatCurrency(txn.totalCost)}</td>
+                      <td>
+                        <span style={{
+                          display: 'inline-block', padding: '3px 10px', borderRadius: 20,
+                          fontSize: 11.5, fontWeight: 600, background: 'var(--primary-pale)',
+                          color: 'var(--primary)', border: '1px solid rgba(79,70,229,0.15)',
+                        }}>{txn.usageType || '—'}</span>
+                      </td>
+                      <td style={{ fontSize: 13 }}>{txn.loggedBy || '—'}</td>
+                      <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 140 }}>{txn.notes || '—'}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                          <button
+                            onClick={() => openEditUsage(txn)}
+                            title="Edit record"
+                            style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: 6, cursor: 'pointer', padding: '4px 7px', display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)', transition: 'all 0.15s' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--primary-pale)'; e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+                          >
+                            <MdEdit style={{ fontSize: 15 }} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteUsage(txn)}
+                            title="Delete record"
+                            style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: 6, cursor: 'pointer', padding: '4px 7px', display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)', transition: 'all 0.15s' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger-bg)'; e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = 'var(--danger)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+                          >
+                            <MdDelete style={{ fontSize: 15 }} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)', fontSize: 12.5, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Showing {filteredUsed.length} usage record{filteredUsed.length !== 1 ? 's' : ''}</span>
+            <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+              Total consumed this view: {formatCurrency(filteredUsed.reduce((s, t) => s + t.totalCost, 0))}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Usage Modal ─────────────────────────── */}
+      {editUsage && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditUsage(null); }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+            {/* Modal header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--border-light)', background: 'var(--primary-pale)' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--primary)' }}>Edit Usage Record</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{editUsage.item} · {editUsage.id}</div>
+              </div>
+              <button onClick={() => setEditUsage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20, lineHeight: 1 }}>
+                <MdClose />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ padding: '22px 22px 8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 18px' }}>
+                <div>
+                  <label className="fsp-label">Date of Usage *</label>
+                  <input className="fsp-input" type="date" value={editForm.date}
+                    onChange={(e) => setEditForm((f) => ({ ...f, date: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="fsp-label">Quantity Used * ({editUsage.unit})</label>
+                  <input className="fsp-input" type="number" min="0.01" step="0.01"
+                    value={editForm.quantity}
+                    onChange={(e) => setEditForm((f) => ({ ...f, quantity: e.target.value }))}
+                    placeholder="e.g. 10" />
+                </div>
+                <div>
+                  <label className="fsp-label">Usage Type</label>
+                  <select className="fsp-select" value={editForm.usageType}
+                    onChange={(e) => setEditForm((f) => ({ ...f, usageType: e.target.value }))}>
+                    {USAGE_TYPES.map((t) => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="fsp-label">Logged By</label>
+                  <input className="fsp-input" value={editForm.loggedBy}
+                    onChange={(e) => setEditForm((f) => ({ ...f, loggedBy: e.target.value }))}
+                    placeholder="e.g. Chef Marco" />
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label className="fsp-label">Notes</label>
+                  <input className="fsp-input" value={editForm.notes}
+                    onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                    placeholder="Optional notes…" />
+                </div>
+              </div>
+
+              {/* Stock impact preview */}
+              {editForm.quantity && Number(editForm.quantity) !== editUsage.qty && (
+                <div style={{ margin: '14px 0 6px', padding: '10px 14px', borderRadius: 10, background: 'var(--bg-main)', border: '1px solid var(--border-color)', fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Stock impact: </span>
+                  Old qty <strong>{editUsage.qty} {editUsage.unit}</strong> → New qty <strong>{editForm.quantity} {editUsage.unit}</strong>
+                  {' · '}
+                  {Number(editForm.quantity) < editUsage.qty
+                    ? <span style={{ color: 'var(--success)' }}>+{editUsage.qty - Number(editForm.quantity)} {editUsage.unit} restored to inventory</span>
+                    : <span style={{ color: 'var(--danger)' }}>-{Number(editForm.quantity) - editUsage.qty} {editUsage.unit} further deducted</span>}
+                </div>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{ display: 'flex', gap: 10, padding: '14px 22px 20px', justifyContent: 'flex-end' }}>
+              <button className="btn-secondary-fsp" onClick={() => setEditUsage(null)}>Cancel</button>
+              <button
+                className="btn-stock-update"
+                onClick={handleEditSave}
+                disabled={editSaving || !editForm.quantity}
+                style={{ opacity: editSaving || !editForm.quantity ? 0.6 : 1 }}
+              >
+                <MdSave /> {editSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirm Modal ─────────────────────── */}
+      {deleteUsage && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setDeleteUsage(null); }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+            <div style={{ padding: '22px 22px 8px', textAlign: 'center' }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                <MdDelete style={{ fontSize: 28, color: 'var(--danger)' }} />
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--text-primary)', marginBottom: 8 }}>Delete Usage Record?</div>
+              <div style={{ fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                This will remove the record for{' '}
+                <strong>{deleteUsage.qty} {deleteUsage.unit} of {deleteUsage.item}</strong>{' '}
+                ({formatDate(deleteUsage.date)}) and restore the quantity to inventory.
+              </div>
+              <div style={{ margin: '14px 0 6px', padding: '10px 14px', borderRadius: 10, background: 'var(--success-bg)', border: '1px solid rgba(16,185,129,0.2)', fontSize: 12.5, color: 'var(--success)', fontWeight: 600 }}>
+                +{deleteUsage.qty} {deleteUsage.unit} will be restored to stock
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, padding: '10px 22px 20px', justifyContent: 'center' }}>
+              <button className="btn-secondary-fsp" onClick={() => setDeleteUsage(null)}>Cancel</button>
+              <button
+                className="btn-danger-fsp"
+                onClick={handleDeleteUsage}
+                disabled={!!deletingId}
+                style={{ opacity: deletingId ? 0.6 : 1 }}
+              >
+                <MdDelete /> {deletingId ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ TRANSACTION HISTORY TAB ═════════════════════════ */}
       {activeTab === 'history' && (
         <div className="fsp-card">
@@ -703,12 +1112,13 @@ const UpdateStock = () => {
                   <th>Supplier / Usage</th>
                   <th>Logged By</th>
                   <th>Notes</th>
+                  <th style={{ width: 48, textAlign: 'center' }}>Print</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>
+                    <td colSpan={10} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>
                       No transactions match your filters.
                     </td>
                   </tr>
@@ -743,6 +1153,21 @@ const UpdateStock = () => {
                       <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{txn.supplier || txn.usageType || '—'}</td>
                       <td style={{ fontSize: 13 }}>{txn.loggedBy}</td>
                       <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 160 }}>{txn.notes || '—'}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={() => printTransaction(txn)}
+                          title="Print this record"
+                          style={{
+                            background: 'none', border: '1px solid var(--border-color)', borderRadius: 6,
+                            cursor: 'pointer', padding: '4px 7px', display: 'inline-flex', alignItems: 'center',
+                            color: 'var(--text-muted)', transition: 'all 0.15s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--primary-pale)'; e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+                        >
+                          <MdPrint style={{ fontSize: 15 }} />
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}

@@ -1,7 +1,6 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './Projects.css';
 import './AddItemModal.css';
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import {
   MdRefresh, MdWarehouse,
   MdLocationOn, MdPerson, MdPhone, MdEmail,
@@ -11,15 +10,11 @@ import {
   MdKeyboardArrowDown, MdKeyboardArrowUp, MdFileDownload,
   MdPrint,
 } from 'react-icons/md';
-import { useProjects }    from '../contexts/ProjectsContext';
-import { useAuth }        from '../contexts/AuthContext';
+import { useProjects }       from '../contexts/ProjectsContext';
+import { useAuth }           from '../contexts/AuthContext';
+import { useInventoryStock } from '../hooks/useInventoryStock';
 import { exportSnapshot, nextProjectId } from '../services/projectsDb';
-import {
-  fetchInventoryItems,
-  selectInventoryItems,
-  selectInventoryStatus,
-  selectInventoryError,
-} from '../store/inventorySlice';
+import api from '../services/api';
 import DeleteConfirmModal from './DeleteConfirmModal';
 
 /* ── Constants ─────────────────────────────────────────── */
@@ -227,12 +222,9 @@ const ISM_TD = {
 };
 
 const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
-  const dispatch     = useDispatch();
-  const items        = useSelector(selectInventoryItems);
-  const invStatus    = useSelector(selectInventoryStatus);
-  const invError     = useSelector(selectInventoryError);
-  const loadingItems = invStatus === 'idle' || invStatus === 'loading';
-  const loadError    = invStatus === 'failed' ? (invError || 'Failed to load inventory items') : '';
+  const [items,        setItems]        = useState([]);
+  const [loadingItems, setLoadingItems] = useState(true);
+  const [loadError,    setLoadError]    = useState('');
 
   const now = new Date();
   const [date,        setDate]        = useState(now.toISOString().split('T')[0]);
@@ -242,10 +234,13 @@ const InventoryStockModal = ({ project, adminName, onSave, onClose }) => {
   const [submitErr,   setSubmitErr]   = useState('');
   const [stockErrors, setStockErrors] = useState({});
 
-  /* Fetch inventory (no-op if already cached in Redux) */
+  /* Fetch inventory items directly from API */
   useEffect(() => {
-    dispatch(fetchInventoryItems());
-  }, [dispatch]);
+    api.get('/inventory')
+      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .catch((err) => setLoadError(err.message || 'Failed to load inventory items'))
+      .finally(() => setLoadingItems(false));
+  }, []);
 
   /* Build selection map when items arrive or change */
   useEffect(() => {
@@ -933,6 +928,46 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, 
   const totalReceived = stockReceived.reduce((s, r) => s + Number(r.quantity || 0), 0);
   const totalUsed     = stockUsed.reduce((s, r) => s + Number(r.quantity || 0), 0);
 
+  /* ── Inhouse balance per item (approved received − used) ── */
+  const inhouseItems = useMemo(() => {
+    const receivedMap = {};
+    stockReceived
+      .filter((s) => s.approvalStatus === 'approved')
+      .forEach((sub) => {
+        (sub.items || []).forEach((it) => {
+          const key = it.itemName;
+          if (!receivedMap[key]) {
+            receivedMap[key] = { itemName: it.itemName, category: it.category || '', unit: it.unit || '', totalReceived: 0 };
+          }
+          receivedMap[key].totalReceived += Number(it.quantity || 0);
+        });
+      });
+    const usedMap = {};
+    stockUsed.forEach((r) => {
+      usedMap[r.itemName] = (usedMap[r.itemName] || 0) + Number(r.quantity || 0);
+    });
+    return Object.values(receivedMap)
+      .map((it) => ({ ...it, totalUsed: usedMap[it.itemName] || 0, inhouse: it.totalReceived - (usedMap[it.itemName] || 0) }))
+      .sort((a, b) => b.totalReceived - a.totalReceived);
+  }, [stockReceived, stockUsed]);
+
+  /* ── Grouped use-stock (by item) for the Use Stock tab ── */
+  const usedByItem = useMemo(() => {
+    const map = {};
+    stockUsed.forEach((r) => {
+      if (!map[r.itemName]) map[r.itemName] = { itemName: r.itemName, category: r.category || '', unit: r.unit || '', totalQty: 0, records: [] };
+      map[r.itemName].totalQty += Number(r.quantity || 0);
+      map[r.itemName].records.push(r);
+    });
+    return Object.values(map).sort((a, b) => b.totalQty - a.totalQty);
+  }, [stockUsed]);
+
+  /* ── Approved submissions for Inhouse expandable view ── */
+  const approvedSubs = useMemo(
+    () => stockReceived.filter((s) => s.approvalStatus === 'approved'),
+    [stockReceived]
+  );
+
   return (
     <div>
       {/* ── Back + header ── */}
@@ -1014,8 +1049,11 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, 
         <button className={`page-tab ${tab === 'received' ? 'active' : ''}`} onClick={() => setTab('received')}>
           <MdInbox /> Stock Received <span className="page-tab-count">{stockReceived.length}</span>
         </button>
+        <button className={`page-tab ${tab === 'inhouse' ? 'active' : ''}`} onClick={() => setTab('inhouse')}>
+          <MdWarehouse /> Stock Inhouse <span className="page-tab-count">{inhouseItems.length}</span>
+        </button>
         <button className={`page-tab ${tab === 'used' ? 'active' : ''}`} onClick={() => setTab('used')}>
-          <MdOutbox /> Stock Used <span className="page-tab-count">{stockUsed.length}</span>
+          <MdOutbox /> Use Stock <span className="page-tab-count">{stockUsed.length}</span>
         </button>
       </div>
 
@@ -1200,12 +1238,261 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, 
         </div>
       )}
 
-      {/* ══ STOCK USED TAB ══ */}
+      {/* ══ STOCK INHOUSE TAB ══ */}
+      {tab === 'inhouse' && (
+        <div>
+          {/* ── Inhouse balance summary table ── */}
+          <div className="fsp-card" style={{ marginBottom: 16 }}>
+            <div className="filter-toolbar">
+              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>📦 Current Inhouse Stock</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 4 }}>Approved received − consumed by project users</span>
+              <span className="filter-count" style={{ marginLeft: 'auto' }}>{inhouseItems.length} item{inhouseItems.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            {inhouseItems.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', gap: 14, textAlign: 'center' }}>
+                <div style={{ width: 64, height: 64, borderRadius: 18, background: 'var(--primary-pale)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>
+                  <MdWarehouse style={{ color: 'var(--primary)' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>No Approved Stock Yet</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Inhouse stock appears once submissions are approved by the project user.</div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="fsp-table-wrap">
+                  <table className="fsp-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Item Name</th>
+                        <th>Category</th>
+                        <th>Unit</th>
+                        <th style={{ textAlign: 'center' }}>Total Received</th>
+                        <th style={{ textAlign: 'center' }}>Total Used</th>
+                        <th style={{ textAlign: 'center' }}>Currently Inhouse</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inhouseItems.map((it, idx) => {
+                        const pct     = it.totalReceived > 0 ? Math.round((it.inhouse / it.totalReceived) * 100) : 0;
+                        const color   = it.inhouse <= 0 ? '#EF4444' : it.inhouse < it.totalReceived * 0.2 ? '#F59E0B' : '#10B981';
+                        const bg      = it.inhouse <= 0 ? '#FEF2F2' : it.inhouse < it.totalReceived * 0.2 ? '#FFFBEB' : '#ECFDF5';
+                        const label   = it.inhouse <= 0 ? 'Depleted' : it.inhouse < it.totalReceived * 0.2 ? 'Low' : 'Available';
+                        return (
+                          <tr key={it.itemName}>
+                            <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{idx + 1}</td>
+                            <td><div style={{ fontWeight: 700, fontSize: 13.5 }}>{it.itemName}</div></td>
+                            <td>
+                              <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11.5, background: 'var(--bg-main)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontWeight: 600 }}>
+                                {it.category || '—'}
+                              </span>
+                            </td>
+                            <td style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>{it.unit}</td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{it.totalReceived}</span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>{it.unit}</span>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span style={{ fontWeight: 700, color: 'var(--warning)' }}>{it.totalUsed}</span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>{it.unit}</span>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontWeight: 800, fontSize: 15, color }}>
+                                  {it.inhouse > 0 ? it.inhouse : 0}
+                                  <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>{it.unit}</span>
+                                </span>
+                                {/* progress bar */}
+                                <div style={{ width: 80, height: 5, borderRadius: 3, background: 'var(--border-light)', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, pct))}%`, background: color, borderRadius: 3, transition: 'width 0.3s' }} />
+                                </div>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{pct}% remaining</span>
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, background: bg, color, border: `1px solid ${color}33` }}>
+                                {label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: 'var(--primary-pale)', fontWeight: 700 }}>
+                        <td colSpan={4} style={{ padding: '9px 14px', fontSize: 13, color: 'var(--text-secondary)' }}>
+                          {inhouseItems.length} item types
+                        </td>
+                        <td style={{ padding: '9px 14px', textAlign: 'center', color: 'var(--primary)' }}>
+                          {inhouseItems.reduce((s, i) => s + i.totalReceived, 0)} units
+                        </td>
+                        <td style={{ padding: '9px 14px', textAlign: 'center', color: 'var(--warning)' }}>
+                          {inhouseItems.reduce((s, i) => s + i.totalUsed, 0)} units
+                        </td>
+                        <td style={{ padding: '9px 14px', textAlign: 'center', color: '#10B981', fontSize: 14 }}>
+                          {inhouseItems.reduce((s, i) => s + Math.max(0, i.inhouse), 0)} units
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ── Approved submissions — mirrors user ProjectDetails view ── */}
+          <div className="fsp-card">
+            <div className="filter-toolbar">
+              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>✅ Approved Deliveries</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 4 }}>User-confirmed stock receipts</span>
+              <span className="filter-count" style={{ marginLeft: 'auto' }}>{approvedSubs.length} submission{approvedSubs.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            {approvedSubs.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 20px', gap: 12, textAlign: 'center' }}>
+                <div style={{ fontSize: 36 }}>📋</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>No Approved Deliveries</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Project users have not yet confirmed any deliveries.</div>
+              </div>
+            ) : (
+              <div style={{ padding: '12px 16px 16px' }}>
+                {approvedSubs.map((sub, idx) => {
+                  const isOpen  = expandedIds.has(`ih-${sub.id}`);
+                  const subTotal = Number(sub.totalValue || sub.items?.reduce((s, i) => s + Number(i.total || 0), 0) || 0)
+                    .toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  const okCount  = (sub.items || []).filter((it) => it.userApproved).length;
+                  const issueCount = (sub.items || []).filter((it) => it.userComment).length;
+                  return (
+                    <div key={sub.id} style={{ marginBottom: 10, borderRadius: 12, border: `1px solid ${isOpen ? '#10B981' : 'var(--border-color)'}`, overflow: 'hidden', transition: 'border-color 0.2s' }}>
+                      {/* Row header */}
+                      <div
+                        onClick={() => toggleExpand(`ih-${sub.id}`)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer', background: isOpen ? '#F0FDF4' : '#fff', transition: 'background 0.2s' }}
+                      >
+                        <div style={{ color: '#10B981', fontSize: 22, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                          {isOpen ? <MdKeyboardArrowUp /> : <MdKeyboardArrowDown />}
+                        </div>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: isOpen ? '#10B981' : 'var(--bg-main)', color: isOpen ? '#fff' : 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                          {idx + 1}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text-primary)' }}>Delivery #{idx + 1}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                            <span>👤 {sub.adminName}</span>
+                            <span>📅 {sub.date}</span>
+                            <span>🕐 {sub.time}</span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+                          <span style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--primary-pale)', color: 'var(--primary)', fontSize: 12, fontWeight: 700 }}>
+                            {sub.items?.length || 0} items
+                          </span>
+                          <span style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--success-bg)', color: 'var(--success)', fontSize: 12, fontWeight: 700 }}>
+                            ₹{subTotal}
+                          </span>
+                          <span style={{ padding: '3px 10px', borderRadius: 20, background: '#ECFDF5', color: '#10B981', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <MdCheckCircle size={13} /> {okCount}/{sub.items?.length || 0} OK
+                          </span>
+                          {issueCount > 0 && (
+                            <span style={{ padding: '3px 10px', borderRadius: 20, background: '#FEF2F2', color: '#DC2626', fontSize: 12, fontWeight: 700 }}>
+                              ⚠ {issueCount} issue{issueCount !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                        <button className="btn-icon-sm" style={{ color: 'var(--primary)', flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); printInvoice(sub); }} title="Print Invoice">
+                          <MdPrint />
+                        </button>
+                      </div>
+
+                      {/* Expanded items */}
+                      {isOpen && (
+                        <div style={{ borderTop: '1px solid #D1FAE5' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                            <thead>
+                              <tr style={{ background: '#F0FDF4' }}>
+                                {['#', 'Item Name', 'Category', 'Delivered Qty', 'Rate (₹)', 'Total (₹)', 'User Status', 'User Comment'].map((h) => (
+                                  <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid #D1FAE5', whiteSpace: 'nowrap' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(sub.items || []).map((it, i) => (
+                                <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#F9FFFE' }}>
+                                  <td style={{ padding: '9px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{i + 1}</td>
+                                  <td style={{ padding: '9px 14px', fontWeight: 700 }}>{it.itemName}</td>
+                                  <td style={{ padding: '9px 14px' }}>
+                                    <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11.5, background: 'var(--bg-main)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontWeight: 600 }}>{it.category || '—'}</span>
+                                  </td>
+                                  <td style={{ padding: '9px 14px', fontWeight: 700, color: 'var(--primary)' }}>
+                                    {it.quantity} <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>{it.unit}</span>
+                                  </td>
+                                  <td style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>{it.rate ? `₹${Number(it.rate).toFixed(2)}` : '—'}</td>
+                                  <td style={{ padding: '9px 14px', fontWeight: 700, color: 'var(--success)' }}>{it.total ? `₹${Number(it.total).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}</td>
+                                  <td style={{ padding: '9px 14px' }}>
+                                    {it.userApproved !== undefined
+                                      ? it.userApproved
+                                        ? <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 12 }}><MdCheckCircle /> Received OK</span>
+                                        : <span style={{ color: '#EF4444', fontWeight: 700, fontSize: 12 }}>✗ Issue Flagged</span>
+                                      : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 12 }}>Not confirmed</span>}
+                                  </td>
+                                  <td style={{ padding: '9px 14px', fontSize: 12, color: it.userComment ? '#DC2626' : 'var(--text-muted)', fontStyle: it.userComment ? 'normal' : 'italic', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={it.userComment}>
+                                    {it.userComment || '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div style={{ padding: '10px 16px', background: '#ECFDF5', borderTop: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <MdLock style={{ color: '#10B981', fontSize: 14, flexShrink: 0 }} />
+                            <span style={{ color: '#059669', fontWeight: 600, fontSize: 12.5 }}>
+                              Approved by {sub.approvedBy || 'User'} · {sub.approvedAt ? new Date(sub.approvedAt).toLocaleString('en-IN') : '—'}
+                            </span>
+                            <span style={{ color: '#6EE7B7', fontSize: 12, marginLeft: 4 }}>
+                              · {okCount}/{sub.items?.length || 0} items OK
+                              {issueCount > 0 && <span style={{ color: '#DC2626', marginLeft: 6, fontWeight: 600 }}>· {issueCount} issue{issueCount !== 1 ? 's' : ''} noted</span>}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ USE STOCK TAB (read-only) ══ */}
       {tab === 'used' && (
         <div className="fsp-card">
           <div className="filter-toolbar">
-            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>Stock Used Records</span>
+            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>Use Stock Records</span>
             <span className="filter-count" style={{ marginLeft: 4 }}>{stockUsed.length} record{stockUsed.length !== 1 ? 's' : ''}</span>
+            <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0', marginLeft: 4 }}>
+              🔒 Read Only
+            </span>
+            {usedByItem.length > 0 && (
+              <button
+                className="btn-secondary-fsp"
+                style={{ marginLeft: 'auto', fontSize: 12.5 }}
+                onClick={() => {
+                  const headers = ['#','Item Name','Category','Qty','Unit','Purpose','Date','Notes'];
+                  const rows = stockUsed.map((r, i) => [i+1, r.itemName, r.category, r.quantity, r.unit, r.purpose || '', r.date, r.notes || '']);
+                  const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+                  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                  a.download = `${project.name.replace(/\s+/g,'_')}_stock_used.csv`;
+                  a.click(); URL.revokeObjectURL(a.href);
+                }}
+              >
+                <MdFileDownload /> Download CSV
+              </button>
+            )}
           </div>
 
           {stockUsed.length === 0 ? (
@@ -1215,45 +1502,91 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, 
               </div>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>No Stock Used Yet</div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No stock usage records for this project.</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Project users haven't logged any stock consumption yet.</div>
               </div>
             </div>
           ) : (
             <>
-              <div className="fsp-table-wrap">
-                <table className="fsp-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Item Name</th>
-                      <th>Category</th>
-                      <th>Qty</th>
-                      <th>Purpose / Used For</th>
-                      <th>Date</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stockUsed.map((rec, idx) => (
-                      <tr key={rec.id}>
-                        <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{idx + 1}</td>
-                        <td><div style={{ fontWeight: 700, fontSize: 13.5 }}>{rec.itemName}</div></td>
-                        <td>
-                          {rec.category
-                            ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11.5, background: 'var(--bg-main)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontWeight: 600 }}>{rec.category}</span>
-                            : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>}
-                        </td>
-                        <td style={{ fontWeight: 700, color: 'var(--warning)' }}>{rec.quantity} <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>{rec.unit}</span></td>
-                        <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{rec.purpose || '—'}</td>
-                        <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{rec.date}</td>
-                        <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={rec.notes}>{rec.notes || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {/* Per-item summary strip */}
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-light)', background: '#FFFBEB' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>Summary by Item</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {usedByItem.map((it) => (
+                    <div key={it.itemName} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 10, background: '#fff', border: '1px solid rgba(245,158,11,0.25)', minWidth: 160 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--text-primary)' }}>{it.itemName}</div>
+                        {it.category && <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{it.category}</div>}
+                      </div>
+                      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: '#D97706' }}>{it.totalQty}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{it.unit} · {it.records.length} record{it.records.length !== 1 ? 's' : ''}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)', fontSize: 12.5, color: 'var(--text-muted)' }}>
-                {stockUsed.length} record{stockUsed.length !== 1 ? 's' : ''} · {totalUsed} units consumed total
+
+              {/* Per-item collapsible groups */}
+              <div style={{ padding: '12px 16px 16px' }}>
+                {usedByItem.map((group) => {
+                  const groupKey = `used-${group.itemName}`;
+                  const isOpen   = expandedIds.has(groupKey);
+                  return (
+                    <div key={group.itemName} style={{ marginBottom: 8, borderRadius: 10, border: `1px solid ${isOpen ? 'var(--warning)' : 'var(--border-color)'}`, overflow: 'hidden', transition: 'border-color 0.2s' }}>
+                      {/* Group header */}
+                      <div
+                        onClick={() => toggleExpand(groupKey)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: isOpen ? '#FFFBEB' : '#fff', transition: 'background 0.2s' }}
+                      >
+                        <div style={{ color: 'var(--warning)', fontSize: 20, flexShrink: 0 }}>
+                          {isOpen ? <MdKeyboardArrowUp /> : <MdKeyboardArrowDown />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text-primary)' }}>{group.itemName}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                            {group.category} · {group.records.length} usage record{group.records.length !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Total consumed:</span>
+                          <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--warning)' }}>
+                            {group.totalQty} <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>{group.unit}</span>
+                          </span>
+                        </div>
+                      </div>
+                      {/* Expanded detail rows */}
+                      {isOpen && (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, borderTop: '1px solid var(--border-light)' }}>
+                          <thead>
+                            <tr style={{ background: '#FFFBEB' }}>
+                              {['#', 'Date', 'Quantity', 'Purpose / Used For', 'Notes'].map((h) => (
+                                <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1px solid rgba(245,158,11,0.2)', whiteSpace: 'nowrap' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...group.records].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((rec, ri) => (
+                              <tr key={rec.id} style={{ background: ri % 2 === 0 ? '#fff' : '#FFFEF8' }}>
+                                <td style={{ padding: '9px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{ri + 1}</td>
+                                <td style={{ padding: '9px 14px', fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{rec.date}</td>
+                                <td style={{ padding: '9px 14px', fontWeight: 800, color: 'var(--warning)' }}>
+                                  {rec.quantity} <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>{rec.unit}</span>
+                                </td>
+                                <td style={{ padding: '9px 14px', fontSize: 12.5, color: 'var(--text-secondary)' }}>{rec.purpose || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>}</td>
+                                <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={rec.notes}>{rec.notes || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)', fontSize: 12.5, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{stockUsed.length} record{stockUsed.length !== 1 ? 's' : ''} across {usedByItem.length} item type{usedByItem.length !== 1 ? 's' : ''}</span>
+                <span style={{ fontWeight: 700, color: 'var(--warning)', fontSize: 13 }}>Total consumed: {totalUsed} units</span>
               </div>
             </>
           )}
@@ -1269,7 +1602,8 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, 
    ══════════════════════════════════════════════════════════ */
 const Projects = () => {
   const { projects, stockReceived, stockUsed, addProject, updateProject, deleteProject, addStockReceived, updateStockReceived, deleteStockReceived } = useProjects();
-  const { user } = useAuth();
+  const { user }        = useAuth();
+  const { deductStock, refreshAll } = useInventoryStock();
 
   const [search,          setSearch]          = useState('');
   const [statusFilter,    setStatusFilter]    = useState('All');
@@ -1324,8 +1658,43 @@ const Projects = () => {
 
   const handleAddStock = useCallback(async (submission) => {
     await addStockReceived(addStockProject.id, submission);
+
+    // Deduct quantities from InventoryItems.currentStock and record 'out' stock record
+    const ts = new Date(`${submission.date}T${submission.time}:00`).toISOString();
+    await deductStock(submission.items.map((i) => ({
+      itemId:       i.itemId,
+      qty:          i.quantity,
+      projectId:    addStockProject.id,
+      projectName:  addStockProject.name,
+      submissionId: submission.id,
+      loggedBy:     submission.adminName,
+      date:         submission.date,
+      time:         submission.time,
+      timestamp:    ts,
+    })));
+
+    // Write an OUT record to stock-history for each item so it appears in Stock Update History
+    await Promise.all(
+      submission.items.map((i) =>
+        api.post(`/stock-history/${i.itemId}`, {
+          timestamp: ts,
+          qty:       i.quantity,
+          rate:      i.rate,
+          unit:      i.unit,
+          desc:      i.notes || '',
+          type:      'OUT',
+          itemName:  i.itemName,
+          category:  i.category,
+          usageType: `Project: ${addStockProject.name}`,
+          loggedBy:  submission.adminName,
+        }).catch(console.error)
+      )
+    );
+
+    await refreshAll();
+
     setAddStockProject(null);
-  }, [addStockReceived, addStockProject]);
+  }, [addStockReceived, addStockProject, deductStock, refreshAll]);
 
   const handleUpdateSubmission = useCallback(async (updatedData) => {
     await updateStockReceived(editSubmission.projectId, editSubmission.sub.id, updatedData);
@@ -1372,7 +1741,10 @@ const Projects = () => {
           onDeleteSubmission={(sub) => setDeleteConfirm({
             title:   'Delete Stock Record',
             message: `Record from ${sub.date} with ${sub.items?.length || 0} items will be permanently removed.`,
-            onConfirm: async () => { await deleteStockReceived(viewingProject.id, sub.id); },
+            onConfirm: async () => {
+              await deleteStockReceived(viewingProject.id, sub.id);
+              await refreshAll();
+            },
           })}
         />
       ) : (

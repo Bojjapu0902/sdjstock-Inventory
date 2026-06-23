@@ -9,57 +9,42 @@ import { createContext, useContext, useEffect, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 
 import {
-  selectProjects,
-  selectStockReceived,
-  selectStockUsed,
-  selectUsers,
-  selectProjectsLoading,
-  selectProjectsError,
-  fetchAllProjectData,
-  addProjectThunk,
-  updateProjectThunk,
-  deleteProjectThunk,
-  addStockReceivedThunk,
-  updateStockReceivedThunk,
-  deleteStockReceivedThunk,
-  approveSubmissionThunk,
-  addStockUsedThunk,
-  deleteStockUsedThunk,
-  createUserThunk,
-  deleteUserThunk,
-  refreshUsersThunk,
-} from '../store/projectsSlice';
+  getProjects, addProject, updateProject, deleteProject,
+  getAllStockReceived, addStockReceived, updateStockReceived,
+  deleteStockReceived, approveSubmission,
+  getAllStockUsed, addStockUsed, deleteStockUsed,
+  clearProjectStockUsed,
+} from '../services/projectsDb';
+import {
+  getUsers, deleteProjectUser, createUser, deleteUser,
+} from '../services/loginDb';
 
 const ProjectsContext = createContext(null);
 
 /* ── Provider ── bootstraps the initial fetch ─────── */
 export function ProjectsProvider({ children }) {
-  const dispatch = useDispatch();
+  const [projects,      setProjects]      = useState([]);
+  const [users,         setUsers]         = useState([]);
+  const [stockReceived, setStockReceived] = useState({});
+  const [stockUsed,     setStockUsed]     = useState({});
+  const [loading,       setLoading]       = useState(true);
 
+  // Load all data on mount.
+  // stockReceived is embedded in each project document — no separate fetch needed.
   useEffect(() => {
-    dispatch(fetchAllProjectData());
-  }, [dispatch]);
-
-  return (
-    <ProjectsContext.Provider value={dispatch}>
-      {children}
-    </ProjectsContext.Provider>
-  );
-}
-
-/* ── Hook ── same API as before ──────────────────── */
-export function useProjects() {
-  const ctx = useContext(ProjectsContext);
-  if (ctx === null) throw new Error('useProjects must be used inside <ProjectsProvider>');
-
-  const dispatch = ctx;
-
-  const projects      = useSelector(selectProjects);
-  const stockReceived = useSelector(selectStockReceived);
-  const stockUsed     = useSelector(selectStockUsed);
-  const users         = useSelector(selectUsers);
-  const loading       = useSelector(selectProjectsLoading);
-  const error         = useSelector(selectProjectsError);
+    Promise.all([
+      getProjects(),
+      getUsers(),
+      getAllStockUsed(),
+      getAllStockReceived(),
+    ]).then(([p, u, su, sr]) => {
+      setProjects(p);
+      setUsers(u);
+      setStockReceived(sr);
+      setStockUsed(su);
+    }).catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
   /* ── Projects ── */
   const addProject = useCallback(
@@ -72,10 +57,16 @@ export function useProjects() {
     [dispatch],
   );
 
-  const deleteProject = useCallback(
-    (id) => dispatch(deleteProjectThunk(id)).unwrap(),
-    [dispatch],
-  );
+  const deleteProjectFn = useCallback(async (id) => {
+    await deleteProject([], id);
+    await deleteProjectUser([], id);
+    // stockReceived is embedded — deleting the project removes it automatically.
+    const su = await clearProjectStockUsed({}, id);
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    setUsers((prev)    => prev.filter((u) => u.projectId !== id));
+    setStockReceived((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    setStockUsed(su);
+  }, []);
 
   /* ── Stock Received ── */
   const addStockReceived = useCallback(
@@ -115,20 +106,19 @@ export function useProjects() {
     [dispatch],
   );
 
-  /* ── Users ── */
-  const createUser = useCallback(
-    async (userData) => {
-      const result = await dispatch(createUserThunk(userData));
-      if (createUserThunk.rejected.match(result)) return result.payload;
-      return null;
-    },
-    [dispatch],
-  );
+  /* ── Stock Used ────────────────────────────────── */
 
-  const deleteUser = useCallback(
-    (userId) => dispatch(deleteUserThunk(userId)).unwrap(),
-    [dispatch],
-  );
+  const addStockUsedFn = useCallback(async (projectId, formData) => {
+    const result = await addStockUsed({}, projectId, formData);
+    setStockUsed(result);
+  }, []);
+
+  const deleteStockUsedFn = useCallback(async (projectId, recordId) => {
+    const result = await deleteStockUsed({}, projectId, recordId);
+    setStockUsed(result);
+  }, []);
+
+  /* ── Expose users refresh ─────────────────────── */
 
   const refreshUsers = useCallback(
     () => dispatch(refreshUsersThunk()).unwrap(),
@@ -140,19 +130,19 @@ export function useProjects() {
     users,
     stockReceived,
     stockUsed,
+    stockReturned,
     loading,
-    error,
-    addProject,
-    updateProject,
-    deleteProject,
-    addStockReceived,
-    updateStockReceived,
-    deleteStockReceived,
-    approveSubmission,
-    addStockUsed,
-    deleteStockUsed,
-    createUser,
-    deleteUser,
+    addProject:          addProjectFn,
+    updateProject:       updateProjectFn,
+    deleteProject:       deleteProjectFn,
+    addStockReceived:    addStockReceivedFn,
+    updateStockReceived: updateStockReceivedFn,
+    deleteStockReceived: deleteStockReceivedFn,
+    approveSubmission:   approveSubmissionFn,
+    addStockUsed:        addStockUsedFn,
+    deleteStockUsed:     deleteStockUsedFn,
+    createUser:          createUserFn,
+    deleteUser:          deleteUserFn,
     refreshUsers,
   };
 }
