@@ -8,6 +8,7 @@ import {
   MdManageAccounts, MdDeleteSweep,
 } from 'react-icons/md';
 import { useAuth } from '../../contexts/AuthContext';
+const LOGO_SRC = `${process.env.PUBLIC_URL}/asserts/images/logo.webp`;
 
 const Sidebar = ({ collapsed, onToggle, mobileVisible, onMobileClose }) => {
   const location              = useLocation();
@@ -61,8 +62,28 @@ const Sidebar = ({ collapsed, onToggle, mobileVisible, onMobileClose }) => {
       <aside className={sidebarClass}>
         {/* Brand */}
         <div className="sidebar-brand">
-          <div className="sidebar-brand-icon"><MdRestaurant /></div>
-          <div className="sidebar-brand-text">
+          <div style={{ display: 'flex', alignItems: 'start', gap: 14, marginBottom: 60, position: 'relative', zIndex: 1 }}>
+          <div style={{
+            width:42, height: 42, borderRadius: 12,
+            background: 'linear-gradient(135deg, #818CF8, #4F46E5)',
+            display: 'flex', alignItems: 'start', justifyContent: 'center',
+            fontSize: 24,
+            overflow: 'hidden',
+            boxShadow: '0 8px 24px rgba(79,70,229,0.4)',
+          }}>
+            <img
+                  src={LOGO_SRC}
+                  alt="SDJ Marine"
+                  style={{ width: 48, height: 48, objectFit: 'contain' }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.nextSibling.style.display = 'block';
+                  }}
+                />
+           
+          </div>
+          </div>
+          <div className="sidebar-brand-text" style={{ position: 'relative', zIndex: 1, marginTop:"8px" }}>
             <div className="sidebar-brand-title">SDJ MARINE PVT. LTD</div>
             <div className="sidebar-brand-sub">AN ISO 9001:2015 CERTIFIED COMPANY</div>
           </div>

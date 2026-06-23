@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MdVisibility, MdVisibilityOff, MdLock, MdPerson, MdRestaurant } from 'react-icons/md';
 import { authenticate, setCurrentUser, forgotPassword, verifyOtp, resetPassword } from '../services/loginDb';
-
+const LOGO_SRC = `${process.env.PUBLIC_URL}/asserts/images/logo.webp`;
 const Login = ({ onLogin }) => {
   const [username, setUsername]   = useState('');
   const [password, setPassword]   = useState('');
@@ -161,7 +161,7 @@ const Login = ({ onLogin }) => {
 
   const features = [
     { icon: '📦', label: 'Real-time stock tracking' },
-    { icon: '📊', label: 'Advanced analytics & reports' },
+    
     { icon: '🛒', label: 'Purchase order management' },
     { icon: '🏭', label: 'Supplier directory' },
     { icon: '🗑️', label: 'Wastage monitoring' },
@@ -223,9 +223,19 @@ const Login = ({ onLogin }) => {
             background: 'linear-gradient(135deg, #818CF8, #4F46E5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 24,
+            overflow: 'hidden',
             boxShadow: '0 8px 24px rgba(79,70,229,0.4)',
           }}>
-            <MdRestaurant style={{ color: 'white' }} />
+            <img
+                  src={LOGO_SRC}
+                  alt="SDJ Marine"
+                  style={{ width: 72, height: 72, objectFit: 'contain' }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.nextSibling.style.display = 'block';
+                  }}
+                />
+           
           </div>
           <div>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
