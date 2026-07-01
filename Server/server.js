@@ -6,7 +6,10 @@ const connectDB = require('./config/db');
 connectDB();
 
 const app = express();
-app.use(cors({ origin: ['http://localhost:3000', 'http://localhost:3001'], credentials: true }));
+app.use(cors({
+  origin: (origin, cb) => cb(null, true), // allow web + mobile (Expo, emulator, physical device)
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // Routes
