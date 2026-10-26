@@ -7,13 +7,14 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { useAuth } from '../contexts/AuthContext';
 
-import LoginScreen        from '../screens/LoginScreen';
+import LoginScreen          from '../screens/LoginScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
-import DashboardScreen    from '../screens/DashboardScreen';
-import ProjectsScreen     from '../screens/ProjectsScreen';
-import ProjectDetailScreen from '../screens/ProjectDetailScreen';
-import InventoryScreen    from '../screens/InventoryScreen';
-import ProfileScreen      from '../screens/ProfileScreen';
+import DashboardScreen      from '../screens/DashboardScreen';
+import ProjectsScreen       from '../screens/ProjectsScreen';
+import ProjectDetailScreen  from '../screens/ProjectDetailScreen';
+import InventoryScreen      from '../screens/InventoryScreen';
+import ProfileScreen        from '../screens/ProfileScreen';
+import ChatScreen           from '../screens/ChatScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab   = createBottomTabNavigator();
@@ -34,6 +35,7 @@ function MainTabs() {
             Dashboard: focused ? 'grid' : 'grid-outline',
             Projects:  focused ? 'folder' : 'folder-outline',
             Inventory: focused ? 'cube' : 'cube-outline',
+            Chat:      focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline',
             Profile:   focused ? 'person' : 'person-outline',
           };
           return <Ionicons name={icons[route.name]} size={size} color={color} />;
@@ -43,6 +45,9 @@ function MainTabs() {
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="Projects"  component={ProjectsStack}   />
       <Tab.Screen name="Inventory" component={InventoryScreen} />
+      <Tab.Screen name="Chat"      component={ChatScreen}
+        options={{ tabBarLabel: 'AI Chat', title: 'AI Chat' }}
+      />
       <Tab.Screen name="Profile"   component={ProfileScreen}   />
     </Tab.Navigator>
   );

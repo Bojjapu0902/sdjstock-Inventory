@@ -24,6 +24,7 @@ app.use('/api/stock-used',     require('./routes/stockUsed'));
 app.use('/api/stock-returned', require('./routes/stockReturned'));
 app.use('/api/stock-history',  require('./routes/stockHistory'));
 app.use('/api/users',          require('./routes/users'));
+app.use('/api/chat',           require('./routes/chat'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
