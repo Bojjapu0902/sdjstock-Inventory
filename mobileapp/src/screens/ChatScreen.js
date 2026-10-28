@@ -16,6 +16,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '../contexts/AuthContext';
 import { BASE_URL } from '../config/api';
 
@@ -115,7 +116,7 @@ export default function ChatScreen() {
     scrollToEnd();
 
     try {
-      const token = user?.token;
+      const token = await SecureStore.getItemAsync('auth_token');
       const res   = await fetch(`${BASE_URL}/chat`, {
         method:  'POST',
         headers: {

@@ -46,9 +46,9 @@ export default function DashboardScreen() {
 
   useEffect(() => { load(); }, []);
 
-  const activeProjects  = projects.filter((p) => p.status === 'active' || p.status === 'ongoing').length;
+  const activeProjects  = projects.filter((p) => ['active','ongoing','Active','Ongoing'].includes(p.status)).length;
   const totalItems      = inventory.length;
-  const lowStock        = inventory.filter((i) => (i.quantity || 0) <= (i.minQuantity || 0)).length;
+  const lowStock        = inventory.filter((i) => (i.currentStock ?? i.quantity ?? 0) <= (i.minStock ?? i.minQuantity ?? 0) && (i.currentStock ?? i.quantity ?? 0) >= 0).length;
   const recentProjects  = [...projects].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
 
   if (loading) {
