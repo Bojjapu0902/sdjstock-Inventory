@@ -208,7 +208,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
     // Setup Gemini model
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.8-flash',
       systemInstruction: `You are an AI stock assistant for SDJ Marine Pvt. Ltd. You help manage marine inventory and projects. Use the available tools to check stock, update quantities, create projects, and get summaries. Be concise and helpful. The user is ${username}.`,
       tools,
     });
