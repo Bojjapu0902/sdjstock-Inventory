@@ -1,375 +1,275 @@
-/**
- * POST /api/chat
- * AI chat endpoint — natural language inventory assistant powered by Claude.
- *
- * Request body:
- *   { message: string, history: [{role:'user'|'assistant', content:string}] }
- *
- * Response:
- *   { reply: string }
- *
- * The endpoint uses Claude's tool_use feature so the AI can:
- *   - check_stock           → query InventoryItem collection
- *   - update_stock          → add or deduct qty from an item
- *   - create_project        → create a new Project document
- *   - assign_stock_to_project → deduct stock and link it to a project
- *   - delete_inventory_item → permanently remove an item
- *   - get_daily_summary     → overview of stock health
- */
+const express        = require('express');
+const router         = express.Router();
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const authMiddleware = require('../middleware/auth');
+const InventoryItem  = require('../models/InventoryItem');
+const Project        = require('../models/Project');
+const ChatHistory    = require('../models/ChatHistory');
 
-const router = require('express').Router();
-const auth   = require('../middleware/auth');
-const Anthropic = require('@anthropic-ai/sdk');
+const genAI = new GoogleGenerativeAI(process.env.AIStudio_API_KEY);
 
-const Item    = require('../models/InventoryItem');
-const Project = require('../models/Project');
+// Max messages to keep in DB per user
+const MAX_HISTORY = 40;
 
-// Lazy-initialise the client so we don't crash at startup if the key is missing.
-let _client = null;
-function getClient() {
-  if (!_client) {
-    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-  return _client;
-}
-
-// ── Tool definitions (what Claude is allowed to call) ─────────────────────────
-
-const TOOLS = [
-  {
-    name: 'check_stock',
-    description:
-      'Check current stock levels. Can search by item name or category, or return everything. ' +
-      'Use for questions like "how much rice do we have?" or "show me low-stock items".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        search: {
-          type: 'string',
-          description: 'Item name or category to search (case-insensitive). Omit to get all items.',
-        },
-        low_stock_only: {
-          type: 'boolean',
-          description: 'If true, only return items where currentStock ≤ minStock.',
-        },
-      },
-    },
-  },
-  {
-    name: 'update_stock',
-    description:
-      'Add or deduct stock for an inventory item. ' +
-      'Use for "add 50 kg of rice", "receive 100 units of cooking oil", or "deduct 10 kg of flour".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        item_name: { type: 'string', description: 'Name of the inventory item.' },
-        quantity: {
-          type: 'number',
-          description: 'Amount to add (positive) or deduct (negative). E.g. 50 to add, -10 to remove.',
-        },
-        notes: { type: 'string', description: 'Reason for the change, e.g. "Monthly delivery".' },
-      },
-      required: ['item_name', 'quantity'],
-    },
-  },
-  {
-    name: 'create_project',
-    description:
-      'Create a new project in the system. ' +
-      'Use for "create project Vessel-Alpha" or "start new project for Mumbai port".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        name:        { type: 'string', description: 'Project name.' },
-        description: { type: 'string', description: 'Optional description of the project.' },
-      },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'assign_stock_to_project',
-    description:
-      'Deduct stock from inventory and assign it to a project. ' +
-      'Use for "assign 20 kg of rice to project Vessel-Alpha".',
-    input_schema: {
-      type: 'object',
-      properties: {
-        project_name: { type: 'string', description: 'Name (or partial name) of the project.' },
-        item_name:    { type: 'string', description: 'Name (or partial name) of the inventory item.' },
-        quantity:     { type: 'number', description: 'Quantity to assign.' },
-      },
-      required: ['project_name', 'item_name', 'quantity'],
-    },
-  },
-  {
-    name: 'delete_inventory_item',
-    description:
-      'Permanently delete an inventory item. ' +
-      'ONLY use when the user explicitly asks to delete or remove an item from the system.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        item_name: { type: 'string', description: 'Name of the item to delete.' },
-      },
-      required: ['item_name'],
-    },
-  },
-  {
-    name: 'get_daily_summary',
-    description:
-      'Return a daily inventory health summary: total items, low-stock count, out-of-stock count, ' +
-      'estimated total stock value, and a list of items needing attention. ' +
-      'Use for "morning summary", "daily report", or "what needs reordering?".',
-    input_schema: {
-      type: 'object',
-      properties: {},
-    },
-  },
-];
-
-// ── Tool executor — runs against the live MongoDB database ────────────────────
-
-async function executeTool(toolName, input, userId) {
-  switch (toolName) {
-
-    case 'check_stock': {
-      let query = {};
-      if (input.search) {
-        const re = new RegExp(input.search, 'i');
-        query = { $or: [{ name: re }, { category: re }] };
+// ── Tool executor ──────────────────────────────────────────────────────────────
+async function executeTool(name, args) {
+  try {
+    if (name === 'check_stock') {
+      let query = { active: true };
+      if (args.search) {
+        query.$or = [
+          { name:     { $regex: args.search, $options: 'i' } },
+          { category: { $regex: args.search, $options: 'i' } },
+        ];
       }
-      let items = await Item.find(query).lean();
-      if (input.low_stock_only) {
+      let items = await InventoryItem.find(query).limit(20);
+      if (args.low_stock_only) {
         items = items.filter(i => i.currentStock <= i.minStock);
       }
-      if (!items.length) return { found: 0, message: 'No matching items found.' };
-      return {
-        found: items.length,
-        items: items.map(i => ({
-          id:           i.id,
-          name:         i.name,
-          category:     i.category,
-          currentStock: i.currentStock,
-          minStock:     i.minStock,
-          unit:         i.unit,
-          status:       i.currentStock === 0 ? 'OUT_OF_STOCK' : i.currentStock <= i.minStock ? 'LOW' : 'OK',
-        })),
-      };
+      if (!items.length) return 'No items found.';
+      return items.map(i =>
+        `${i.name} (${i.category}): ${i.currentStock} ${i.unit} [min: ${i.minStock}]`
+      ).join('\n');
     }
 
-    case 'update_stock': {
-      const re   = new RegExp(input.item_name, 'i');
-      const item = await Item.findOne({ name: re });
-      if (!item) return { success: false, error: `Item "${input.item_name}" not found.` };
-
-      const before = item.currentStock;
-      const qty    = Number(input.quantity);
-      item.currentStock = Math.max(0, item.currentStock + qty);
-      item.stockRecords = item.stockRecords || [];
-      item.stockRecords.push({
-        id:        `SR-CHAT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        qty:       Math.abs(qty),
-        rate:      0,
-        direction: qty >= 0 ? 'in' : 'out',
-        notes:     input.notes || 'Updated via AI Chat',
-        loggedBy:  userId,
-        timestamp: new Date().toISOString(),
-        date:      new Date().toLocaleDateString('en-IN'),
-        time:      new Date().toLocaleTimeString('en-IN'),
-      });
+    if (name === 'update_stock') {
+      let item = null;
+      if (args.item_id)   item = await InventoryItem.findOne({ id: args.item_id });
+      if (!item && args.item_name)
+        item = await InventoryItem.findOne({ name: { $regex: args.item_name, $options: 'i' } });
+      if (!item) return `Item not found: ${args.item_name || args.item_id}`;
+      const newQty = args.is_delta ? item.currentStock + args.quantity : args.quantity;
+      item.currentStock = Math.max(0, newQty);
       await item.save();
-      return {
-        success: true,
-        item:   item.name,
-        unit:   item.unit,
-        before,
-        change: qty,
-        after:  item.currentStock,
-      };
+      return `Updated ${item.name}: now ${item.currentStock} ${item.unit}`;
     }
 
-    case 'create_project': {
-      const exists = await Project.findOne({ name: new RegExp(`^${input.name}$`, 'i') });
-      if (exists) return { success: false, error: `Project "${input.name}" already exists.` };
-
-      const project = await Project.create({
-        id:          `PROJ-CHAT-${Date.now()}`,
-        name:        input.name,
-        description: input.description || '',
-        status:      'Active',
-        createdAt:   new Date().toISOString(),
-        createdBy:   userId,
-        stockItems:  [],
-        users:       [],
+    if (name === 'create_project') {
+      const id = 'PRJ-' + Date.now();
+      await Project.create({
+        id, projectName: args.name,
+        vessel: args.vessel || '', location: args.location || '',
+        status: 'Active', createdAt: new Date().toISOString().split('T')[0],
       });
-      return {
-        success: true,
-        project: { id: project.id, name: project.name, status: project.status },
-      };
+      return `Project "${args.name}" created successfully.`;
     }
 
-    case 'assign_stock_to_project': {
-      const project = await Project.findOne({ name: new RegExp(input.project_name, 'i') });
-      if (!project) return { success: false, error: `Project "${input.project_name}" not found.` };
-
-      const item = await Item.findOne({ name: new RegExp(input.item_name, 'i') });
-      if (!item) return { success: false, error: `Item "${input.item_name}" not found.` };
-
-      const qty = Number(input.quantity);
-      if (item.currentStock < qty) {
-        return {
-          success: false,
-          error:   `Insufficient stock. Available: ${item.currentStock} ${item.unit}, requested: ${qty} ${item.unit}.`,
-        };
-      }
-
-      item.currentStock = Math.max(0, item.currentStock - qty);
-      item.stockRecords = item.stockRecords || [];
-      item.stockRecords.push({
-        id:          `SR-OUT-CHAT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        qty,
-        rate:        0,
-        direction:   'out',
-        projectId:   project.id,
-        projectName: project.name,
-        loggedBy:    userId,
-        timestamp:   new Date().toISOString(),
-        date:        new Date().toLocaleDateString('en-IN'),
-        time:        new Date().toLocaleTimeString('en-IN'),
-      });
+    if (name === 'assign_stock_to_project') {
+      const item = await InventoryItem.findOne({ name: { $regex: args.item_name, $options: 'i' } });
+      if (!item) return `Item not found: ${args.item_name}`;
+      const project = await Project.findOne({ projectName: { $regex: args.project_name, $options: 'i' } });
+      if (!project) return `Project not found: ${args.project_name}`;
+      if (item.currentStock < args.quantity) return `Insufficient stock. Available: ${item.currentStock} ${item.unit}`;
+      item.currentStock -= args.quantity;
       await item.save();
-      return {
-        success:        true,
-        item:           item.name,
-        unit:           item.unit,
-        assigned:       qty,
-        project:        project.name,
-        remainingStock: item.currentStock,
-      };
+      return `Assigned ${args.quantity} ${item.unit} of ${item.name} to ${project.projectName}. Remaining: ${item.currentStock}`;
     }
 
-    case 'delete_inventory_item': {
-      const re   = new RegExp(input.item_name, 'i');
-      const item = await Item.findOne({ name: re });
-      if (!item) return { success: false, error: `Item "${input.item_name}" not found.` };
-      await Item.deleteOne({ _id: item._id });
-      return { success: true, deleted: item.name };
+    if (name === 'delete_inventory_item') {
+      const item = args.item_id
+        ? await InventoryItem.findOne({ id: args.item_id })
+        : await InventoryItem.findOne({ name: { $regex: args.item_name, $options: 'i' } });
+      if (!item) return 'Item not found.';
+      item.active = false;
+      await item.save();
+      return `Item "${item.name}" deleted successfully.`;
     }
 
-    case 'get_daily_summary': {
-      const items     = await Item.find({}).lean();
-      const lowStock  = items.filter(i => i.currentStock <= i.minStock && i.currentStock > 0);
-      const outStock  = items.filter(i => i.currentStock === 0);
-      const totalVal  = items.reduce((s, i) => s + (i.currentStock * (i.unitCost || 0)), 0);
-      const health    = items.length
-        ? Math.round(((items.length - lowStock.length - outStock.length) / items.length) * 100)
-        : 100;
-      return {
-        date:            new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-        totalItems:      items.length,
-        healthyItems:    items.length - lowStock.length - outStock.length,
-        lowStockCount:   lowStock.length,
-        outOfStockCount: outStock.length,
-        healthPercent:   health,
-        estimatedValue:  Math.round(totalVal),
-        needsAttention:  [...outStock, ...lowStock].slice(0, 10).map(i => ({
-          name: i.name, current: i.currentStock, min: i.minStock, unit: i.unit,
-          status: i.currentStock === 0 ? 'OUT_OF_STOCK' : 'LOW',
-        })),
-      };
+    if (name === 'get_daily_summary') {
+      const items    = await InventoryItem.find({ active: true });
+      const lowStock = items.filter(i => i.currentStock <= i.minStock);
+      const totalVal = items.reduce((s, i) => s + (i.currentStock * (i.unitCost || 0)), 0);
+      const projects = await Project.find({ status: { $in: ['Active', 'active', 'Ongoing', 'ongoing'] } });
+      return `📊 Daily Summary:\n• Total items: ${items.length}\n• Low stock alerts: ${lowStock.length}\n• Active projects: ${projects.length}\n• Estimated stock value: ₹${totalVal.toLocaleString('en-IN')}`;
     }
 
-    default:
-      return { error: `Unknown tool: ${toolName}` };
+    return 'Unknown tool.';
+  } catch (err) {
+    return `Error: ${err.message}`;
   }
 }
 
-// ── POST /api/chat ─────────────────────────────────────────────────────────────
+// ── Tool definitions for Gemini ────────────────────────────────────────────────
+const tools = [{
+  functionDeclarations: [
+    {
+      name: 'check_stock',
+      description: 'Check current stock levels. Can search by name or category.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          search:         { type: 'STRING',  description: 'Item name or category to search (optional)' },
+          low_stock_only: { type: 'BOOLEAN', description: 'Return only low stock items' },
+        },
+      },
+    },
+    {
+      name: 'update_stock',
+      description: 'Update stock quantity for an inventory item.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          item_id:   { type: 'STRING',  description: 'Item ID' },
+          item_name: { type: 'STRING',  description: 'Item name' },
+          quantity:  { type: 'NUMBER',  description: 'New quantity or delta' },
+          is_delta:  { type: 'BOOLEAN', description: 'If true, add/subtract instead of set' },
+          notes:     { type: 'STRING',  description: 'Optional notes' },
+        },
+        required: ['quantity'],
+      },
+    },
+    {
+      name: 'create_project',
+      description: 'Create a new project/vessel.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          name:     { type: 'STRING', description: 'Project name' },
+          vessel:   { type: 'STRING', description: 'Vessel name (optional)' },
+          location: { type: 'STRING', description: 'Location (optional)' },
+        },
+        required: ['name'],
+      },
+    },
+    {
+      name: 'assign_stock_to_project',
+      description: 'Assign/deduct stock quantity to a project.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          item_name:    { type: 'STRING', description: 'Inventory item name' },
+          project_name: { type: 'STRING', description: 'Project name' },
+          quantity:     { type: 'NUMBER', description: 'Quantity to assign' },
+        },
+        required: ['item_name', 'project_name', 'quantity'],
+      },
+    },
+    {
+      name: 'delete_inventory_item',
+      description: 'Delete an inventory item.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          item_name: { type: 'STRING', description: 'Item name' },
+          item_id:   { type: 'STRING', description: 'Item ID' },
+        },
+      },
+    },
+    {
+      name: 'get_daily_summary',
+      description: 'Get a summary of today\'s inventory status.',
+      parameters: { type: 'OBJECT', properties: {} },
+    },
+  ],
+}];
 
-router.post('/', auth, async (req, res) => {
+// ── GET /api/chat/history ──────────────────────────────────────────────────────
+router.get('/history', authMiddleware, async (req, res) => {
   try {
-    const { message, history = [] } = req.body;
-    if (!message || !message.trim()) {
-      return res.status(400).json({ error: 'Message is required.' });
-    }
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return res.status(503).json({ error: 'AI service not configured. Add ANTHROPIC_API_KEY to .env.' });
+    const userId  = req.user.id || req.user._id || req.user.userId;
+    const history = await ChatHistory.findOne({ userId });
+    res.json({ messages: history ? history.messages : [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/chat/history ───────────────────────────────────────────────────
+router.delete('/history', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id || req.user.userId;
+    await ChatHistory.deleteOne({ userId });
+    res.json({ message: 'Chat history cleared.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/chat ─────────────────────────────────────────────────────────────
+router.post('/', authMiddleware, async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message is required.' });
+
+    const userId   = req.user.id || req.user._id || req.user.userId;
+    const username = req.user.username || req.user.name || 'User';
+
+    // Load persistent history from DB
+    let historyDoc = await ChatHistory.findOne({ userId });
+    if (!historyDoc) {
+      historyDoc = await ChatHistory.create({ userId, username, messages: [] });
     }
 
-    const today = new Date().toLocaleDateString('en-IN', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    // Build Gemini chat history (role must be 'user' or 'model')
+    const pastMessages = historyDoc.messages.slice(-MAX_HISTORY).map(m => ({
+      role:  m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+
+    // Setup Gemini model
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      systemInstruction: `You are an AI stock assistant for SDJ Marine Pvt. Ltd. You help manage marine inventory and projects. Use the available tools to check stock, update quantities, create projects, and get summaries. Be concise and helpful. The user is ${username}.`,
+      tools,
     });
 
-    const systemPrompt =
-      `You are the SDJ Marine AI Stock Assistant — a helpful, concise assistant for SDJ Marine Pvt. Ltd. ` +
-      `inventory and project management.\n\n` +
-      `Today: ${today}\n` +
-      `User: ${req.user.username || req.user.id} (Role: ${req.user.role || 'Staff'})\n\n` +
-      `Guidelines:\n` +
-      `- Always confirm destructive actions (delete) before executing them.\n` +
-      `- Format stock numbers with units (e.g. "50 kg", "12 cans").\n` +
-      `- Be brief and direct. Use plain text, not markdown headers.\n` +
-      `- When listing items, keep it readable (name: qty unit status).\n` +
-      `- If a request is unclear, ask one clarifying question.`;
+    // Start chat with history
+    const chat = model.startChat({ history: pastMessages });
 
-    // Build messages array
-    const messages = [
-      ...history.map(h => ({ role: h.role, content: h.content })),
-      { role: 'user', content: message.trim() },
-    ];
+    // ── Agentic loop ──────────────────────────────────────────────────────────
+    let finalReply = '';
+    let currentMessage = message;
 
-    const client = getClient();
+    while (true) {
+      const result   = await chat.sendMessage(currentMessage);
+      const response = result.response;
+      const candidate = response.candidates?.[0];
+      const parts     = candidate?.content?.parts || [];
 
-    // First call to Claude
-    let response = await client.messages.create({
-      model:      'claude-haiku-4-5',
-      max_tokens: 1024,
-      system:     systemPrompt,
-      tools:      TOOLS,
-      messages,
-    });
+      // Check for function calls
+      const fnCalls = parts.filter(p => p.functionCall);
 
-    // Agentic loop — keep running tool calls until Claude gives a final text reply
-    while (response.stop_reason === 'tool_use') {
-      const assistantContent = response.content;
-      const toolResults      = [];
-
-      for (const block of assistantContent) {
-        if (block.type === 'tool_use') {
-          const result = await executeTool(block.name, block.input, req.user.id);
-          toolResults.push({
-            type:        'tool_result',
-            tool_use_id: block.id,
-            content:     JSON.stringify(result),
+      if (fnCalls.length > 0) {
+        // Execute all tool calls
+        const fnResponses = [];
+        for (const part of fnCalls) {
+          const { name, args } = part.functionCall;
+          const toolResult = await executeTool(name, args || {});
+          fnResponses.push({
+            functionResponse: {
+              name,
+              response: { result: toolResult },
+            },
           });
         }
+        // Send tool results back to Gemini
+        currentMessage = fnResponses;
+        continue;
       }
 
-      // Feed results back to Claude
-      response = await client.messages.create({
-        model:      'claude-haiku-4-5',
-        max_tokens: 1024,
-        system:     systemPrompt,
-        tools:      TOOLS,
-        messages: [
-          ...messages,
-          { role: 'assistant', content: assistantContent },
-          { role: 'user',      content: toolResults      },
-        ],
-      });
+      // No function calls — get text reply
+      finalReply = parts
+        .filter(p => p.text)
+        .map(p => p.text)
+        .join('\n')
+        .trim() || 'Done.';
+      break;
     }
 
-    const textBlock = response.content.find(b => b.type === 'text');
-    const reply     = textBlock ? textBlock.text.trim() : 'Done.';
+    // Save to DB
+    const now = new Date();
+    historyDoc.messages.push({ role: 'user',      content: message,    timestamp: now });
+    historyDoc.messages.push({ role: 'assistant', content: finalReply, timestamp: now });
+    if (historyDoc.messages.length > MAX_HISTORY) {
+      historyDoc.messages = historyDoc.messages.slice(-MAX_HISTORY);
+    }
+    historyDoc.updatedAt = now;
+    await historyDoc.save();
 
-    res.json({ reply });
+    res.json({ reply: finalReply });
   } catch (err) {
-    console.error('[/api/chat] error:', err.message);
-    // Surface Anthropic API errors clearly
-    if (err.status === 401) return res.status(503).json({ error: 'Invalid Anthropic API key.' });
-    if (err.status === 429) return res.status(503).json({ error: 'AI service rate-limited. Try again shortly.' });
-    res.status(500).json({ error: err.message || 'AI service error.' });
+    console.error('Chat error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
