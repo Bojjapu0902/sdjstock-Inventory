@@ -213,37 +213,43 @@ router.post('/', authMiddleware, async (req, res) => {
       tools,
     });
 
-    // Start chat with history
-    const chat = model.startChat({ history: pastMessages });
+    // Build full contents array manually (avoids role 'function' issue with new API)
+    // Gemini requires: role must be 'user' or 'model' only
+    const contents = [
+      ...pastMessages,
+      { role: 'user', parts: [{ text: message }] },
+    ];
 
     // ── Agentic loop ──────────────────────────────────────────────────────────
     let finalReply = '';
-    let currentMessage = message;
 
     while (true) {
-      const result   = await chat.sendMessage(currentMessage);
-      const response = result.response;
+      const result    = await model.generateContent({ contents, tools });
+      const response  = result.response;
       const candidate = response.candidates?.[0];
       const parts     = candidate?.content?.parts || [];
+
+      // Add model response to contents
+      contents.push({ role: 'model', parts });
 
       // Check for function calls
       const fnCalls = parts.filter(p => p.functionCall);
 
       if (fnCalls.length > 0) {
         // Execute all tool calls
-        const fnResponses = [];
+        const fnResponseParts = [];
         for (const part of fnCalls) {
           const { name, args } = part.functionCall;
           const toolResult = await executeTool(name, args || {});
-          fnResponses.push({
+          fnResponseParts.push({
             functionResponse: {
               name,
               response: { result: toolResult },
             },
           });
         }
-        // Send tool results back to Gemini
-        currentMessage = fnResponses;
+        // Send tool results back as 'user' role (NOT 'function' — new API requirement)
+        contents.push({ role: 'user', parts: fnResponseParts });
         continue;
       }
 
