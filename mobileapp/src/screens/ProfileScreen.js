@@ -4,6 +4,7 @@ import {
   TextInput, Alert, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { changePassword } from '../services/authService';
 
@@ -12,6 +13,7 @@ const DARK   = '#1E1B4B';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+  const insets = useSafeAreaInsets();
   const [changingPw, setChangingPw]   = useState(false);
   const [currentPw, setCurrentPw]     = useState('');
   const [newPw,     setNewPw]         = useState('');
@@ -44,7 +46,7 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.scroll}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 24 }]}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
@@ -121,7 +123,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: '#F3F4F6' },
   scroll:       { paddingBottom: 40 },
-  header:       { backgroundColor: DARK, alignItems: 'center', paddingTop: 60, paddingBottom: 32, paddingHorizontal: 24 },
+  header:       { backgroundColor: DARK, alignItems: 'center', paddingBottom: 32, paddingHorizontal: 24 },
   avatar:       { width: 80, height: 80, borderRadius: 40, backgroundColor: INDIGO, justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 3, borderColor: '#ffffff33' },
   avatarText:   { fontSize: 28, fontWeight: '800', color: '#fff' },
   username:     { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 4 },

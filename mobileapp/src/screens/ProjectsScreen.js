@@ -4,6 +4,7 @@ import {
   TextInput, RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { getProjects } from '../services/projectService';
 
@@ -15,10 +16,26 @@ function statusColor(s) {
   return map[(s || '').toLowerCase()] || '#6B7280';
 }
 
-export default function ProjectsScreen({ navigation }) {
+const FILTERS = [
+  { key: 'all',       label: 'All' },
+  { key: 'active',    label: 'Active' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'pending',   label: 'Pending' },
+];
+
+function matchesFilter(p, filter) {
+  const s = (p.status || '').toLowerCase();
+  if (filter === 'active') return s === 'active' || s === 'ongoing';
+  if (filter === 'all') return true;
+  return s === filter;
+}
+
+export default function ProjectsScreen({ navigation, route }) {
+  const insets = useSafeAreaInsets();
   const [projects,   setProjects]   = useState([]);
   const [filtered,   setFiltered]   = useState([]);
   const [search,     setSearch]     = useState('');
+  const [filter,     setFilter]     = useState(route?.params?.filter || 'all');
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -38,15 +55,20 @@ export default function ProjectsScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
+  // Dashboard KPI cards pass a filter via route params
   useEffect(() => {
-    if (!search.trim()) { setFiltered(projects); return; }
-    const q = search.toLowerCase();
+    if (route?.params?.filter) setFilter(route.params.filter);
+  }, [route?.params]);
+
+  useEffect(() => {
+    const q = search.trim().toLowerCase();
     setFiltered(projects.filter((p) =>
-      (p.projectName || p.name || '').toLowerCase().includes(q) ||
-      (p.projectId   || p.id   || '').toLowerCase().includes(q) ||
-      (p.vessel      || '').toLowerCase().includes(q)
+      matchesFilter(p, filter) && (!q ||
+        (p.projectName || p.name || '').toLowerCase().includes(q) ||
+        String(p.projectId || p.id || '').toLowerCase().includes(q) ||
+        (p.vessel      || '').toLowerCase().includes(q))
     ));
-  }, [search, projects]);
+  }, [search, projects, filter]);
 
   function renderItem({ item }) {
     const sc = statusColor(item.status);
@@ -80,7 +102,7 @@ export default function ProjectsScreen({ navigation }) {
   return (
     <View style={styles.root}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.headerTitle}>Projects</Text>
         <Text style={styles.headerCount}>{projects.length} total</Text>
       </View>
@@ -102,6 +124,18 @@ export default function ProjectsScreen({ navigation }) {
         ) : null}
       </View>
 
+      <View style={styles.chipRow}>
+        {FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.chip, filter === f.key && styles.chipActive]}
+            onPress={() => setFilter(f.key)}
+          >
+            <Text style={[styles.chipText, filter === f.key && styles.chipTextActive]}>{f.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.id || item._id)}
@@ -117,11 +151,16 @@ export default function ProjectsScreen({ navigation }) {
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: '#F3F4F6' },
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F3F4F6' },
-  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: DARK, padding: 20, paddingTop: 50 },
+  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: DARK, padding: 20 },
   headerTitle:  { fontSize: 22, fontWeight: '800', color: '#fff' },
   headerCount:  { fontSize: 14, color: '#A5B4FC' },
   searchBox:    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', margin: 12, borderRadius: 12, paddingHorizontal: 14, height: 46, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   searchInput:  { flex: 1, fontSize: 15, color: '#111827' },
+  chipRow:      { flexDirection: 'row', paddingHorizontal: 12, marginBottom: 8, gap: 8 },
+  chip:         { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB' },
+  chipActive:   { backgroundColor: INDIGO, borderColor: INDIGO },
+  chipText:     { fontSize: 13, fontWeight: '600', color: '#6B7280' },
+  chipTextActive: { color: '#fff' },
   list:         { paddingHorizontal: 12, paddingBottom: 24 },
   card:         { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   cardHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },

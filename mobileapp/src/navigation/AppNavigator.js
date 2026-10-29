@@ -4,8 +4,10 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../contexts/AuthContext';
+import Logo from '../components/Logo';
 
 import LoginScreen          from '../screens/LoginScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
@@ -23,13 +25,24 @@ const INDIGO = '#4F46E5';
 const DARK   = '#1E1B4B';
 
 function MainTabs() {
+  // Edge-to-edge rendering draws under the system nav bar; pad the tab bar by its inset.
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, 8);
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: INDIGO,
         tabBarInactiveTintColor: '#6B7280',
-        tabBarStyle: { backgroundColor: '#fff', borderTopColor: '#E5E7EB', height: 60, paddingBottom: 8 },
+        tabBarHideOnKeyboard: true,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopColor: '#E5E7EB',
+          height: 54 + bottomPad,
+          paddingTop: 6,
+          paddingBottom: bottomPad,
+        },
         tabBarIcon: ({ focused, color, size }) => {
           const icons = {
             Dashboard: focused ? 'grid' : 'grid-outline',
@@ -77,6 +90,7 @@ export default function AppNavigator() {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: DARK }}>
+        <Logo size={96} style={{ marginBottom: 24 }} />
         <ActivityIndicator size="large" color="#fff" />
       </View>
     );

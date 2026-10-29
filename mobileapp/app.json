@@ -5,18 +5,43 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sdjmarine.inventory"
     },
     "android": {
       "package": "com.sdjmarine.inventory",
-      "backgroundColor": "#1E1B4B"
+      "backgroundColor": "#1E1B4B",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
       "expo-status-bar",
-      "expo-font"
-    ]
+      "expo-font",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow SDJ Marine Inventory to use the microphone for voice chat.",
+          "speechRecognitionPermission": "Allow SDJ Marine Inventory to recognize your speech for voice chat."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "307fe5bd-ba5b-4bdc-bfbd-de201cb19042"
+      }
+    }
   }
 }

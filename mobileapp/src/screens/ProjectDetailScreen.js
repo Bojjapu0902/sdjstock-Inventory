@@ -4,6 +4,7 @@ import {
   RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getStockUsed, getStockReturned, getStockReceived } from '../services/projectService';
 
 const INDIGO  = '#4F46E5';
@@ -54,6 +55,7 @@ function StockRow({ item, color }) {
 
 export default function ProjectDetailScreen({ route, navigation }) {
   const { project } = route.params;
+  const insets = useSafeAreaInsets();
   const pid = project.projectId || project.id;
 
   const [stockUsed,     setStockUsed]     = useState([]);
@@ -88,7 +90,7 @@ export default function ProjectDetailScreen({ route, navigation }) {
   return (
     <View style={styles.root}>
       {/* Top bar */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color="#fff" />
         </TouchableOpacity>
@@ -155,7 +157,7 @@ export default function ProjectDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: '#F3F4F6' },
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  topBar:       { backgroundColor: DARK, flexDirection: 'row', alignItems: 'center', padding: 16, paddingTop: 50, gap: 12 },
+  topBar:       { backgroundColor: DARK, flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn:      { padding: 4 },
   topBarTitle:  { fontSize: 16, fontWeight: '700', color: '#fff' },
   topBarId:     { fontSize: 12, color: '#A5B4FC', marginTop: 2 },

@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator,
+  KeyboardAvoidingView, ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { forgotPassword, verifyOtp, resetPassword } from '../services/authService';
 
 const INDIGO = '#4F46E5';
 const DARK   = '#1E1B4B';
 
 export default function ForgotPasswordScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [step, setStep]             = useState(1); // 1=email, 2=otp, 3=new password
   const [identifier, setIdentifier] = useState('');
   const [otp, setOtp]               = useState('');
@@ -52,8 +54,11 @@ export default function ForgotPasswordScreen({ navigation }) {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={styles.root} behavior="padding">
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <TouchableOpacity style={styles.backBtn} onPress={() => step > 1 ? setStep(step - 1) : navigation.goBack()}>
           <Ionicons name="chevron-back" size={22} color="#fff" />
           <Text style={styles.backText}>Back</Text>
@@ -160,7 +165,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: DARK },
-  scroll:       { flexGrow: 1, padding: 24, paddingTop: 60 },
+  scroll:       { flexGrow: 1, paddingHorizontal: 24 },
   backBtn:      { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
   backText:     { color: '#fff', fontSize: 16, marginLeft: 4 },
   card:         { backgroundColor: '#fff', borderRadius: 20, padding: 28 },

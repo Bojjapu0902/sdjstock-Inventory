@@ -4,25 +4,28 @@ import {
   RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Logo from '../components/Logo';
 import { getProjects } from '../services/projectService';
 import api from '../services/api';
 
 const INDIGO = '#4F46E5';
 const DARK   = '#1E1B4B';
 
-function KpiCard({ icon, label, value, color, bg }) {
+function KpiCard({ icon, label, value, color, bg, onPress }) {
   return (
-    <View style={[styles.kpi, { backgroundColor: bg }]}>
+    <TouchableOpacity style={[styles.kpi, { backgroundColor: bg }]} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.kpiIcon, { backgroundColor: color + '22' }]}>
         <Ionicons name={icon} size={22} color={color} />
       </View>
       <Text style={[styles.kpiVal, { color }]}>{value}</Text>
       <Text style={styles.kpiLabel}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-export default function DashboardScreen() {
+export default function DashboardScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [projects,   setProjects]  = useState([]);
   const [inventory,  setInventory] = useState([]);
   const [loading,    setLoading]   = useState(true);
@@ -46,9 +49,14 @@ export default function DashboardScreen() {
 
   useEffect(() => { load(); }, []);
 
-  const activeProjects  = projects.filter((p) => ['active','ongoing','Active','Ongoing'].includes(p.status)).length;
+  // Same rules as ProjectsScreen / InventoryScreen filters so counts match the lists
+  const activeProjects  = projects.filter((p) => ['active', 'ongoing'].includes((p.status || '').toLowerCase())).length;
   const totalItems      = inventory.length;
-  const lowStock        = inventory.filter((i) => (i.currentStock ?? i.quantity ?? 0) <= (i.minStock ?? i.minQuantity ?? 0) && (i.currentStock ?? i.quantity ?? 0) >= 0).length;
+  const lowStock        = inventory.filter((i) => (i.quantity ?? i.currentStock ?? 0) <= (i.minQuantity ?? i.minStock ?? 0)).length;
+
+  // `ts` makes params differ on every tap so the target screen re-applies the filter
+  const goProjects  = (filter) => navigation.navigate('Projects', { screen: 'ProjectsList', params: { filter, ts: Date.now() } });
+  const goInventory = (filter) => navigation.navigate('Inventory', { filter, ts: Date.now() });
   const recentProjects  = [...projects].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
 
   if (loading) {
@@ -62,7 +70,7 @@ export default function DashboardScreen() {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={styles.scroll}
+      contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={[INDIGO]} />}
     >
       {/* Header */}
@@ -71,17 +79,15 @@ export default function DashboardScreen() {
           <Text style={styles.headerTitle}>Dashboard</Text>
           <Text style={styles.headerSub}>SDJ Marine Inventory</Text>
         </View>
-        <View style={styles.headerLogo}>
-          <Text style={styles.headerLogoText}>SDJ</Text>
-        </View>
+        <Logo size={56} />
       </View>
 
       {/* KPI row */}
       <View style={styles.kpiRow}>
-        <KpiCard icon="folder-open" label="Projects"      value={projects.length} color={INDIGO}    bg="#EEF2FF" />
-        <KpiCard icon="flash"       label="Active"        value={activeProjects}  color="#10B981"   bg="#ECFDF5" />
-        <KpiCard icon="cube"        label="Items"         value={totalItems}      color="#F59E0B"   bg="#FFFBEB" />
-        <KpiCard icon="warning"     label="Low Stock"     value={lowStock}        color="#EF4444"   bg="#FEF2F2" />
+        <KpiCard icon="folder-open" label="Projects"      value={projects.length} color={INDIGO}    bg="#EEF2FF" onPress={() => goProjects('all')} />
+        <KpiCard icon="flash"       label="Active"        value={activeProjects}  color="#10B981"   bg="#ECFDF5" onPress={() => goProjects('active')} />
+        <KpiCard icon="cube"        label="Items"         value={totalItems}      color="#F59E0B"   bg="#FFFBEB" onPress={() => goInventory('all')} />
+        <KpiCard icon="warning"     label="Low Stock"     value={lowStock}        color="#EF4444"   bg="#FEF2F2" onPress={() => goInventory('low')} />
       </View>
 
       {/* Recent Projects */}
@@ -119,8 +125,6 @@ const styles = StyleSheet.create({
   header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: DARK, borderRadius: 16, padding: 18, marginBottom: 16 },
   headerTitle:  { fontSize: 22, fontWeight: '800', color: '#fff' },
   headerSub:    { fontSize: 13, color: '#A5B4FC', marginTop: 2 },
-  headerLogo:   { width: 48, height: 48, borderRadius: 12, backgroundColor: INDIGO, justifyContent: 'center', alignItems: 'center' },
-  headerLogoText: { color: '#fff', fontWeight: '800', fontSize: 14, letterSpacing: 1 },
   kpiRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
   kpi:          { flex: 1, minWidth: '44%', borderRadius: 14, padding: 14, alignItems: 'center' },
   kpiIcon:      { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },

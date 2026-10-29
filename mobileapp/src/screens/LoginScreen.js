@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator,
+  KeyboardAvoidingView, ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
+import Logo from '../components/Logo';
 
 const INDIGO = '#4F46E5';
 const DARK   = '#1E1B4B';
 
 export default function LoginScreen({ navigation }) {
   const { login }         = useAuth();
+  const insets = useSafeAreaInsets();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
@@ -32,10 +35,13 @@ export default function LoginScreen({ navigation }) {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={styles.root} behavior="padding">
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.logoBox}>
-          <View style={styles.logo}><Text style={styles.logoText}>SDJ</Text></View>
+          <Logo size={96} style={styles.logo} />
           <Text style={styles.appName}>SDJ Marine Inventory</Text>
           <Text style={styles.appSub}>Stock & Project Management</Text>
         </View>
@@ -96,10 +102,9 @@ export default function LoginScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   root:       { flex: 1, backgroundColor: DARK },
-  scroll:     { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  scroll:     { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 },
   logoBox:    { alignItems: 'center', marginBottom: 32 },
-  logo:       { width: 72, height: 72, borderRadius: 18, backgroundColor: INDIGO, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  logoText:   { color: '#fff', fontSize: 24, fontWeight: '800', letterSpacing: 2 },
+  logo:       { marginBottom: 14 },
   appName:    { color: '#fff', fontSize: 22, fontWeight: '700', marginBottom: 4 },
   appSub:     { color: '#A5B4FC', fontSize: 14 },
   card:       { backgroundColor: '#fff', borderRadius: 20, padding: 28, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 16, elevation: 8 },

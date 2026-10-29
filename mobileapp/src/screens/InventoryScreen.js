@@ -4,16 +4,30 @@ import {
   TextInput, RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../services/api';
 
 const INDIGO = '#4F46E5';
 const DARK   = '#1E1B4B';
 
-export default function InventoryScreen() {
+const FILTERS = [
+  { key: 'all', label: 'All Items' },
+  { key: 'low', label: 'Low Stock' },
+];
+
+function isLowStock(i) {
+  const qty = i.quantity ?? i.currentStock ?? 0;
+  const min = i.minQuantity ?? i.minStock ?? 0;
+  return qty <= min;
+}
+
+export default function InventoryScreen({ route }) {
+  const insets = useSafeAreaInsets();
   const [items,      setItems]      = useState([]);
   const [filtered,   setFiltered]   = useState([]);
   const [search,     setSearch]     = useState('');
+  const [filter,     setFilter]     = useState(route?.params?.filter || 'all');
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -30,14 +44,19 @@ export default function InventoryScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
+  // Dashboard KPI cards pass a filter via route params
   useEffect(() => {
-    if (!search.trim()) { setFiltered(items); return; }
-    const q = search.toLowerCase();
+    if (route?.params?.filter) setFilter(route.params.filter);
+  }, [route?.params]);
+
+  useEffect(() => {
+    const q = search.trim().toLowerCase();
     setFiltered(items.filter((i) =>
-      (i.itemName || i.name || '').toLowerCase().includes(q) ||
-      (i.category || '').toLowerCase().includes(q)
+      (filter !== 'low' || isLowStock(i)) && (!q ||
+        (i.itemName || i.name || '').toLowerCase().includes(q) ||
+        (i.category || '').toLowerCase().includes(q))
     ));
-  }, [search, items]);
+  }, [search, items, filter]);
 
   function stockStatus(item) {
     const qty  = item.quantity  || item.currentStock || 0;
@@ -70,15 +89,11 @@ export default function InventoryScreen() {
     );
   }
 
-  const lowStockCount = items.filter((i) => {
-    const qty = i.quantity ?? i.currentStock ?? 0;
-    const min = i.minQuantity ?? i.minStock ?? 0;
-    return qty <= min;
-  }).length;
+  const lowStockCount = items.filter(isLowStock).length;
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View>
           <Text style={styles.headerTitle}>Inventory</Text>
           <Text style={styles.headerSub}>{items.length} items · {lowStockCount} low stock</Text>
@@ -105,6 +120,18 @@ export default function InventoryScreen() {
         ) : null}
       </View>
 
+      <View style={styles.chipRow}>
+        {FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.chip, filter === f.key && styles.chipActive]}
+            onPress={() => setFilter(f.key)}
+          >
+            <Text style={[styles.chipText, filter === f.key && styles.chipTextActive]}>{f.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {loading
         ? <View style={styles.center}><ActivityIndicator size="large" color={INDIGO} /></View>
         : (
@@ -124,13 +151,18 @@ export default function InventoryScreen() {
 const styles = StyleSheet.create({
   root:        { flex: 1, backgroundColor: '#F3F4F6' },
   center:      { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header:      { backgroundColor: DARK, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingTop: 50 },
+  header:      { backgroundColor: DARK, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
   headerSub:   { fontSize: 13, color: '#A5B4FC', marginTop: 2 },
   warnBadge:   { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, gap: 4 },
   warnText:    { fontSize: 14, fontWeight: '700', color: '#F59E0B' },
   searchBox:   { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', margin: 12, borderRadius: 12, paddingHorizontal: 14, height: 46, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   searchInput: { flex: 1, fontSize: 15, color: '#111827' },
+  chipRow:     { flexDirection: 'row', paddingHorizontal: 12, marginBottom: 8, gap: 8 },
+  chip:        { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB' },
+  chipActive:  { backgroundColor: INDIGO, borderColor: INDIGO },
+  chipText:    { fontSize: 13, fontWeight: '600', color: '#6B7280' },
+  chipTextActive: { color: '#fff' },
   list:        { paddingHorizontal: 12, paddingBottom: 24 },
   card:        { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
   cardLeft:    { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 },
