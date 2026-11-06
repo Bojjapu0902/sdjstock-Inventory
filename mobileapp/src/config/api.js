@@ -2,7 +2,7 @@
 //  API Configuration
 //
 //  PRODUCTION (deployed backend on Render):
-export const BASE_URL = 'https://sdjstock-inventory-api-9m1r.onrender.com/api';
+//export const BASE_URL = 'https://sdjstock-inventory-api-9m1r.onrender.com/api';
 
 //
 //  DEVELOPMENT (local backend — uncomment for local testing):
@@ -10,3 +10,5 @@ export const BASE_URL = 'https://sdjstock-inventory-api-9m1r.onrender.com/api';
 //  iOS simulator:     http://localhost:5000/api
 //  Physical device:   http://<YOUR_LOCAL_IP>:5000/api
 // ─────────────────────────────────────────────────────────────
+// Use your local IP:
+export const BASE_URL = 'http://192.168.2.9:5000/api'; 
