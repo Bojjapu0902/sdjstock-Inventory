@@ -8,7 +8,6 @@ const Login = ({ onLogin }) => {
   const [username, setUsername]   = useState('');
   const [password, setPassword]   = useState('');
   const [showPass, setShowPass]   = useState(false);
-  const [remember, setRemember]   = useState(false);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
   const [shake, setShake]         = useState(false);
@@ -56,7 +55,7 @@ const Login = ({ onLogin }) => {
 
     authenticate(username.trim(), password).then((user) => {
       if (user) {
-        const sessionUser = { username: user.username, role: user.role, name: user.name, projectId: user.projectId || null, email: user.email || '', phone: user.phone || '', id: user.id, token: user.token, isDemo: !!user.isDemo };
+        const sessionUser = { username: user.username, role: user.role, name: user.name, projectId: user.projectId || null, email: user.email || '', phone: user.phone || '', avatar: user.avatar || '', createdAt: user.createdAt || '', id: user.id, token: user.token, isDemo: !!user.isDemo };
         setCurrentUser(sessionUser);
         setAuthUser(sessionUser);
         setTimeout(() => onLogin(sessionUser), 2200);
@@ -66,9 +65,9 @@ const Login = ({ onLogin }) => {
         setFieldErr({ username: true, password: true });
         triggerShake();
       }
-    }).catch(() => {
+    }).catch((err) => {
       setLoading(false);
-      setError('Server error. Please try again.');
+      setError(err.status ? err.message : 'Could not reach the server. Please check your connection and try again.');
       triggerShake();
     });
   };
@@ -104,6 +103,7 @@ const Login = ({ onLogin }) => {
   const sendOtp = async () => {
     setFpError('');
     if (!fpUsername.trim()) { setFpError('Please enter your username or email.'); return; }
+    if (fpUsername.trim().toLowerCase() === DEMO_USERNAME) { setFpError("The demo account's password can't be reset."); return; }
     setFpLoading(true);
     try {
       const res = await forgotPassword(fpUsername);
@@ -539,7 +539,7 @@ const Login = ({ onLogin }) => {
                           value={d}
                           onChange={(e) => handleDigitChange(i, e.target.value)}
                           onKeyDown={(e) => handleDigitKeyDown(i, e)}
-                          onPaste={i === 0 ? handleDigitPaste : undefined}
+                          onPaste={handleDigitPaste}
                           style={{
                             width: 52, height: 60, border: `2px solid ${d ? '#4F46E5' : '#E2E8F0'}`,
                             borderRadius: 12, fontSize: 26, fontWeight: 800, textAlign: 'center',
@@ -650,6 +650,9 @@ const Login = ({ onLogin }) => {
                       : <>Reset Password <MdLock style={{ fontSize: 17 }} /></>
                     }
                   </button>
+                  <button type="button" onClick={resetFpFlow} style={{ width: '100%', marginTop: 10, height: 42, background: 'none', border: '1.5px solid #E2E8F0', borderRadius: 10, color: '#64748B', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
                 </form>
               )}
 
@@ -719,28 +722,6 @@ const Login = ({ onLogin }) => {
             </div>
           </div>
 
-          {/* Demo hint */}
-          <div style={{
-            background: 'linear-gradient(135deg, #EEF2FF, #E0E7FF)',
-            border: '1px solid #C7D2FE',
-            borderRadius: 10,
-            padding: '12px 16px',
-            marginBottom: 24,
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 10,
-          }}>
-            <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🔑</span>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#4338CA', marginBottom: 2 }}>
-                Demo Credentials
-              </div>
-              <div style={{ fontSize: 12, color: '#6366F1' }}>
-                Username: <strong>sdj</strong>&nbsp;&nbsp;·&nbsp;&nbsp;Password: <strong>sdj123@</strong>
-              </div>
-            </div>
-          </div>
-
           {/* Error banner */}
           {error && (
             <div style={{
@@ -803,7 +784,7 @@ const Login = ({ onLogin }) => {
             </div>
 
             {/* Password */}
-            <div style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 28 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <label style={{
                   fontSize: 12.5, fontWeight: 600,
@@ -863,32 +844,6 @@ const Login = ({ onLogin }) => {
                   {showPass ? <MdVisibilityOff /> : <MdVisibility />}
                 </button>
               </div>
-            </div>
-
-            {/* Remember me */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 28 }}>
-              <div
-                onClick={() => setRemember((r) => !r)}
-                style={{
-                  width: 18, height: 18, borderRadius: 5, cursor: 'pointer',
-                  border: `2px solid ${remember ? '#4F46E5' : '#CBD5E1'}`,
-                  background: remember ? '#4F46E5' : '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.18s ease', flexShrink: 0,
-                }}
-              >
-                {remember && (
-                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                    <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </div>
-              <span
-                onClick={() => setRemember((r) => !r)}
-                style={{ fontSize: 13, color: '#64748B', cursor: 'pointer', userSelect: 'none' }}
-              >
-                Keep me signed in for 30 days
-              </span>
             </div>
 
             {/* Submit button */}

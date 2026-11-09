@@ -12,7 +12,9 @@ const SESSION_KEY = 'adjmarine_current_user';
 
 /**
  * Validate credentials against the API.
- * Returns the matched user object (with token) or null.
+ * Returns the matched user object (with token), or null for wrong credentials.
+ * Anything else (deactivated account, server unreachable) is thrown so the
+ * login page doesn't report it as a wrong password.
  */
 export async function authenticate(username, password) {
   if (!username || !password) return null;
@@ -28,8 +30,9 @@ export async function authenticate(username, password) {
       password: password.trim(),
     });
     return { ...user, token };
-  } catch {
-    return null;
+  } catch (err) {
+    if (err.status === 401) return null;
+    throw err;
   }
 }
 

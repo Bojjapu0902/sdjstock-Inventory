@@ -1,9 +1,13 @@
 ﻿import './Settings.css';
-import React, { useState } from 'react';
-import { MdSave, MdBusiness, MdNotifications, MdSecurity, MdStorage, MdAccessTime } from 'react-icons/md';
+import React, { useState, useEffect } from 'react';
+import { MdSave, MdPerson, MdSecurity, MdAccessTime, MdCheckCircle, MdError, MdWarning } from 'react-icons/md';
+import { useAuth } from '../contexts/AuthContext';
+import api from '../services/api';
+import { changePassword } from '../services/loginDb';
 
 const STORAGE_KEY = 'sdjstock_idle_timeout';
 const TIMEOUT_OPTIONS = [5, 10, 15, 30, 60];
+const EMPTY_PASSWORDS = { current: '', next: '', confirm: '' };
 
 function readIdleSettings() {
   try {
@@ -17,192 +21,227 @@ function readIdleSettings() {
 }
 
 const SettingsSection = ({ icon, title, children }) => (
-  <div className="fsp-card" style={{ marginBottom: 16 }}>
+  <div className="fsp-card settings-card">
     <div className="fsp-card-header">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ fontSize: 20, color: 'var(--primary)' }}>{icon}</div>
+      <div className="settings-card-heading">
+        <div className="settings-card-icon">{icon}</div>
         <div className="fsp-card-title">{title}</div>
       </div>
     </div>
-    <div className="fsp-card-body">
-      {children}
-    </div>
+    <div className="fsp-card-body">{children}</div>
   </div>
 );
 
-const ToggleSwitch = ({ checked, onChange, label, desc }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light)' }}>
-    <div>
-      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
-      {desc && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{desc}</div>}
+const Notice = ({ notice }) => {
+  if (!notice) return null;
+  const Icon = notice.type === 'success' ? MdCheckCircle : MdError;
+  return (
+    <div className={`settings-notice ${notice.type}`} role="status">
+      <Icon /> {notice.text}
     </div>
-    <div
-      onClick={onChange}
-      style={{
-        width: 44, height: 24, borderRadius: 12,
-        background: checked ? 'var(--primary)' : 'var(--border-color)',
-        cursor: 'pointer', position: 'relative', transition: 'var(--transition)', flexShrink: 0,
-      }}
-    >
-      <div style={{
-        width: 18, height: 18, borderRadius: '50%', background: 'white',
-        position: 'absolute', top: 3, transition: 'var(--transition)',
-        left: checked ? 23 : 3, boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-      }} />
-    </div>
-  </div>
-);
+  );
+};
 
 const Settings = () => {
-  const [biz,    setBiz]    = useState({ name: 'SDJ MARINE PVT. LTD Demo', email: 'admin@foodstock.io', currency: 'INR', timezone: 'Asia/Kolkata' });
-  const [notifs, setNotifs] = useState({ lowStock: true, expiry: true, po: true, wastage: false });
-  const [idle,   setIdle]   = useState(readIdleSettings);
-  const [saved,  setSaved]  = useState(false);
+  const { user, login } = useAuth();
 
-  const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(idle));
-    window.dispatchEvent(new CustomEvent('idle-settings-changed'));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const [account, setAccount]             = useState({ name: '', email: '', phone: '' });
+  const [accountNotice, setAccountNotice] = useState(null);
+  const [accountSaving, setAccountSaving] = useState(false);
+
+  const [passwords, setPasswords]           = useState(EMPTY_PASSWORDS);
+  const [passwordNotice, setPasswordNotice] = useState(null);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
+  const [idle, setIdle]             = useState(readIdleSettings);
+  const [idleNotice, setIdleNotice] = useState(null);
+
+  useEffect(() => {
+    setAccount({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '' });
+  }, [user]);
+
+  const handleSaveAccount = async (e) => {
+    e.preventDefault();
+    setAccountNotice(null);
+    const name  = account.name.trim();
+    const email = account.email.trim();
+    if (!name) { setAccountNotice({ type: 'error', text: 'Name cannot be empty.' }); return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setAccountNotice({ type: 'error', text: 'Enter a valid email address.' });
+      return;
+    }
+    setAccountSaving(true);
+    try {
+      const updated = await api.put(`/users/${user.id}`, { name, email, phone: account.phone.trim() });
+      login({ ...user, name: updated.name, email: updated.email, phone: updated.phone });
+      setAccountNotice({ type: 'success', text: 'Account details saved.' });
+    } catch (err) {
+      setAccountNotice({ type: 'error', text: err.message || 'Could not save account details.' });
+    } finally {
+      setAccountSaving(false);
+    }
   };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordNotice(null);
+    const fail = (text) => setPasswordNotice({ type: 'error', text });
+    if (!passwords.current)                     return fail('Enter your current password.');
+    if (passwords.next.trim().length < 6)       return fail('New password must be at least 6 characters.');
+    if (passwords.next !== passwords.confirm)   return fail('New passwords do not match.');
+    if (passwords.next === passwords.current)   return fail('New password must differ from the current one.');
+    setPasswordSaving(true);
+    try {
+      await changePassword(passwords.current, passwords.next);
+      setPasswords(EMPTY_PASSWORDS);
+      setPasswordNotice({ type: 'success', text: 'Password updated. Use the new password next time you sign in.' });
+    } catch (err) {
+      fail(err.message || 'Could not update password.');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const handleSaveIdle = () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(idle));
+      window.dispatchEvent(new CustomEvent('idle-settings-changed'));
+      setIdleNotice({ type: 'success', text: 'Session settings saved for this browser.' });
+    } catch {
+      setIdleNotice({ type: 'error', text: 'This browser blocked saving the setting.' });
+    }
+  };
+
+  const changeAccount  = (field) => (e) => { setAccount((a) => ({ ...a, [field]: e.target.value })); setAccountNotice(null); };
+  const changePasswordField = (field) => (e) => { setPasswords((p) => ({ ...p, [field]: e.target.value })); setPasswordNotice(null); };
 
   return (
     <div>
       <div className="page-header">
         <div className="page-header-left">
           <h1>Settings</h1>
-          <p>Configure system preferences, notifications, and integrations</p>
+          <p>Signed in as @{user?.username} ({user?.role})</p>
         </div>
-        <button className="btn-primary-fsp" onClick={handleSave}>
-          <MdSave /> {saved ? 'Saved!' : 'Save Changes'}
-        </button>
       </div>
 
-      <div style={{ maxWidth: 720 }}>
-        <SettingsSection icon={<MdBusiness />} title="Business Information">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
-            <div style={{ gridColumn: 'span 2' }}>
-              <label className="fsp-label">Business Name</label>
-              <input className="fsp-input" value={biz.name}
-                onChange={(e) => setBiz((b) => ({ ...b, name: e.target.value }))} />
+      <div className="settings-column">
+        <SettingsSection icon={<MdPerson />} title="My Account">
+          <form onSubmit={handleSaveAccount} noValidate>
+            <div className="settings-form-grid">
+              <div>
+                <label className="fsp-label" htmlFor="settings-username">Username</label>
+                <input id="settings-username" className="fsp-input" value={user?.username || ''} readOnly disabled />
+              </div>
+              <div>
+                <label className="fsp-label" htmlFor="settings-role">Role</label>
+                <input id="settings-role" className="fsp-input" value={user?.role || ''} readOnly disabled />
+              </div>
+              <div className="settings-form-full">
+                <label className="fsp-label" htmlFor="settings-name">Full Name</label>
+                <input id="settings-name" className="fsp-input" value={account.name} onChange={changeAccount('name')} autoComplete="name" />
+              </div>
+              <div>
+                <label className="fsp-label" htmlFor="settings-email">Email</label>
+                <input id="settings-email" className="fsp-input" type="email" value={account.email} onChange={changeAccount('email')} placeholder="your@email.com" autoComplete="email" />
+              </div>
+              <div>
+                <label className="fsp-label" htmlFor="settings-phone">Phone</label>
+                <input id="settings-phone" className="fsp-input" type="tel" value={account.phone} onChange={changeAccount('phone')} placeholder="+91 00000 00000" autoComplete="tel" />
+              </div>
             </div>
-            <div>
-              <label className="fsp-label">Admin Email</label>
-              <input className="fsp-input" type="email" value={biz.email}
-                onChange={(e) => setBiz((b) => ({ ...b, email: e.target.value }))} />
+
+            {!user?.email && !user?.isDemo && (
+              <div className="settings-notice warning">
+                <MdWarning /> Add an email address. Password reset codes (OTP) are sent there, so without one you can't use "Forgot password".
+              </div>
+            )}
+            <Notice notice={accountNotice} />
+
+            <div className="settings-actions">
+              <button type="submit" className="btn-primary-fsp" disabled={accountSaving}>
+                <MdSave /> {accountSaving ? 'Saving…' : 'Save Account'}
+              </button>
             </div>
-            <div>
-              <label className="fsp-label">Currency</label>
-              <select className="fsp-select" value={biz.currency}
-                onChange={(e) => setBiz((b) => ({ ...b, currency: e.target.value }))}>
-                {['USD', 'EUR', 'GBP', 'AUD', 'CAD', 'INR'].map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="fsp-label">Timezone</label>
-              <select className="fsp-select" value={biz.timezone}
-                onChange={(e) => setBiz((b) => ({ ...b, timezone: e.target.value }))}>
-                {['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Asia/Kolkata'].map((tz) => <option key={tz}>{tz}</option>)}
-              </select>
-            </div>
-          </div>
+          </form>
         </SettingsSection>
 
-        <SettingsSection icon={<MdNotifications />} title="Notification Preferences">
-          <ToggleSwitch checked={notifs.lowStock} onChange={() => setNotifs((n) => ({ ...n, lowStock: !n.lowStock }))}
-            label="Low Stock Alerts" desc="Get notified when any item falls below its minimum threshold" />
-          <ToggleSwitch checked={notifs.expiry} onChange={() => setNotifs((n) => ({ ...n, expiry: !n.expiry }))}
-            label="Expiry Warnings" desc="Receive alerts 7 days before items expire" />
-          <ToggleSwitch checked={notifs.po} onChange={() => setNotifs((n) => ({ ...n, po: !n.po }))}
-            label="Purchase Order Updates" desc="Notify when PO status changes (dispatched, delivered, etc.)" />
-          <ToggleSwitch checked={notifs.wastage} onChange={() => setNotifs((n) => ({ ...n, wastage: !n.wastage }))}
-            label="Weekly Wastage Report" desc="Receive a weekly summary of wastage cost and trends" />
-        </SettingsSection>
+        <SettingsSection icon={<MdSecurity />} title="Change Password">
+          {user?.isDemo ? (
+            <div className="settings-notice info">The demo account's password can't be changed.</div>
+          ) : (
+            <form onSubmit={handleChangePassword} noValidate>
+              <div className="settings-stack">
+                <div>
+                  <label className="fsp-label" htmlFor="settings-current-password">Current Password</label>
+                  <input id="settings-current-password" className="fsp-input" type="password" value={passwords.current} onChange={changePasswordField('current')} autoComplete="current-password" />
+                </div>
+                <div>
+                  <label className="fsp-label" htmlFor="settings-new-password">New Password</label>
+                  <input id="settings-new-password" className="fsp-input" type="password" value={passwords.next} onChange={changePasswordField('next')} placeholder="At least 6 characters" autoComplete="new-password" />
+                </div>
+                <div>
+                  <label className="fsp-label" htmlFor="settings-confirm-password">Confirm New Password</label>
+                  <input id="settings-confirm-password" className="fsp-input" type="password" value={passwords.confirm} onChange={changePasswordField('confirm')} autoComplete="new-password" />
+                </div>
+              </div>
 
-        <SettingsSection icon={<MdStorage />} title="Inventory Defaults">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
-            <div>
-              <label className="fsp-label">Default Low Stock Threshold (%)</label>
-              <input className="fsp-input" type="number" defaultValue={25} min={5} max={50} />
-            </div>
-            <div>
-              <label className="fsp-label">Expiry Warning Lead Time (days)</label>
-              <input className="fsp-input" type="number" defaultValue={7} min={1} max={30} />
-            </div>
-            <div>
-              <label className="fsp-label">Default Wastage Logger</label>
-              <input className="fsp-input" defaultValue="Admin User" />
-            </div>
-            <div>
-              <label className="fsp-label">Items Per Page (Tables)</label>
-              <select className="fsp-select" defaultValue="10">
-                {['10', '20', '50', '100'].map((v) => <option key={v}>{v}</option>)}
-              </select>
-            </div>
-          </div>
-        </SettingsSection>
+              <Notice notice={passwordNotice} />
 
-        <SettingsSection icon={<MdSecurity />} title="Security">
-          <div style={{ display: 'grid', gap: '14px' }}>
-            <div>
-              <label className="fsp-label">Current Password</label>
-              <input className="fsp-input" type="password" placeholder="••••••••" />
-            </div>
-            <div>
-              <label className="fsp-label">New Password</label>
-              <input className="fsp-input" type="password" placeholder="••••••••" />
-            </div>
-            <div>
-              <label className="fsp-label">Confirm New Password</label>
-              <input className="fsp-input" type="password" placeholder="••••••••" />
-            </div>
-            <div>
-              <button className="btn-secondary-fsp" style={{ width: 'fit-content' }}>Update Password</button>
-            </div>
-          </div>
+              <div className="settings-actions">
+                <button type="submit" className="btn-primary-fsp" disabled={passwordSaving}>
+                  <MdSecurity /> {passwordSaving ? 'Updating…' : 'Update Password'}
+                </button>
+              </div>
+            </form>
+          )}
         </SettingsSection>
 
         <SettingsSection icon={<MdAccessTime />} title="Session Timeout">
-          <ToggleSwitch
-            checked={idle.enabled}
-            onChange={() => setIdle(s => ({ ...s, enabled: !s.enabled }))}
-            label="Auto Logout on Inactivity"
-            desc="Automatically log out when there is no admin activity for the configured duration"
-          />
+          <div className="settings-field-row">
+            <div>
+              <div className="settings-field-label">Auto Logout on Inactivity</div>
+              <div className="settings-field-desc">Sign out automatically after a period with no activity in this browser</div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={idle.enabled}
+              aria-label="Auto logout on inactivity"
+              className={`settings-toggle ${idle.enabled ? 'on' : ''}`}
+              onClick={() => { setIdle((s) => ({ ...s, enabled: !s.enabled })); setIdleNotice(null); }}
+            >
+              <span className="settings-toggle-thumb" />
+            </button>
+          </div>
 
-          {idle.enabled && (
-            <div style={{ paddingTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px', alignItems: 'end' }}>
+          {idle.enabled ? (
+            <div className="settings-form-grid settings-idle-grid">
               <div>
-                <label className="fsp-label">Timeout Duration</label>
+                <label className="fsp-label" htmlFor="settings-timeout">Timeout Duration</label>
                 <select
+                  id="settings-timeout"
                   className="fsp-select"
                   value={idle.minutes}
-                  onChange={e => setIdle(s => ({ ...s, minutes: Number(e.target.value) }))}
+                  onChange={(e) => { setIdle((s) => ({ ...s, minutes: Number(e.target.value) })); setIdleNotice(null); }}
                 >
-                  {TIMEOUT_OPTIONS.map(m => (
-                    <option key={m} value={m}>{m} minute{m !== 1 ? 's' : ''}</option>
-                  ))}
+                  {TIMEOUT_OPTIONS.map((m) => <option key={m} value={m}>{m} minutes</option>)}
                 </select>
               </div>
-              <div style={{
-                padding: '10px 14px', borderRadius: 8,
-                background: 'var(--primary-pale)', border: '1px solid rgba(79,70,229,0.15)',
-                fontSize: 12.5, color: 'var(--primary)', fontWeight: 500, lineHeight: 1.5,
-              }}>
-                A 60-second warning will appear before logout. Any activity resets the timer.
+              <div className="settings-notice info settings-notice-inline">
+                A 60-second warning appears before logout. Any activity resets the timer.
               </div>
             </div>
+          ) : (
+            <div className="settings-notice info">Auto logout is off. Sessions stay active until you sign out or close the tab.</div>
           )}
 
-          {!idle.enabled && (
-            <div style={{
-              marginTop: 12, padding: '10px 14px', borderRadius: 8,
-              background: '#F8FAFC', border: '1px solid var(--border-light)',
-              fontSize: 12.5, color: 'var(--text-muted)',
-            }}>
-              Auto logout is disabled. Sessions will remain active until manual logout.
-            </div>
-          )}
+          <Notice notice={idleNotice} />
+
+          <div className="settings-actions">
+            <button type="button" className="btn-primary-fsp" onClick={handleSaveIdle}>
+              <MdSave /> Save Session Settings
+            </button>
+          </div>
         </SettingsSection>
       </div>
     </div>
