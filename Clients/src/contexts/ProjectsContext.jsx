@@ -74,15 +74,31 @@ export function ProjectsProvider({ children }) {
     setStockReceived(updated);
   }, []);
 
-  const updateStockReceivedFn = useCallback(async (projectId, submissionId, updated) => {
-    const result = await updateStockReceived({}, projectId, submissionId, updated);
-    setStockReceived(result);
+  // If the server rejects the change (e.g. the project manager approved it in the
+  // meantime), re-sync so the UI drops the edit/delete buttons, then re-throw.
+  const resyncStockReceived = useCallback(async () => {
+    try { setStockReceived(await getAllStockReceived()); } catch (e) { console.error(e); }
   }, []);
 
+  const updateStockReceivedFn = useCallback(async (projectId, submissionId, updated) => {
+    try {
+      const result = await updateStockReceived({}, projectId, submissionId, updated);
+      setStockReceived(result);
+    } catch (err) {
+      await resyncStockReceived();
+      throw err;
+    }
+  }, [resyncStockReceived]);
+
   const deleteStockReceivedFn = useCallback(async (projectId, submissionId) => {
-    const result = await deleteStockReceived({}, projectId, submissionId);
-    setStockReceived(result);
-  }, []);
+    try {
+      const result = await deleteStockReceived({}, projectId, submissionId);
+      setStockReceived(result);
+    } catch (err) {
+      await resyncStockReceived();
+      throw err;
+    }
+  }, [resyncStockReceived]);
 
   const approveSubmissionFn = useCallback(async (projectId, submissionId, approvalItems, approvedBy) => {
     const result = await approveSubmission({}, projectId, submissionId, approvalItems, approvedBy);

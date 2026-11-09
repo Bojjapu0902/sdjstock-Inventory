@@ -52,24 +52,37 @@ router.post('/:projectId', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+const LOCKED_MSG = 'This submission has already been approved by the project manager and can no longer be edited or deleted.';
+
 // PUT /api/stock-received/:projectId/:submissionId
+// Only allowed while the submission is still pending manager approval.
 router.put('/:projectId/:submissionId', auth, async (req, res) => {
   try {
-    const { id, _id, __v, ...rest } = req.body;
+    // Approval fields are controlled only by the /approve route
+    const { id, _id, __v, approvalStatus, approvedAt, approvedBy, ...rest } = req.body;
     const effectiveId = id || req.params.submissionId;
 
-    // Update StockReceived collection
+    // Update StockReceived collection (atomic: skips already-approved submissions)
     const doc = await SR.findOneAndUpdate(
-      { projectId: req.params.projectId, submissionId: req.params.submissionId },
+      {
+        projectId: req.params.projectId,
+        submissionId: req.params.submissionId,
+        approvalStatus: { $ne: 'approved' },
+      },
       { $set: { submissionId: effectiveId, ...rest } },
       { new: true }
     ).lean();
-    if (!doc) return res.status(404).json({ error: 'Submission not found' });
+    if (!doc) {
+      const exists = await SR.exists({ projectId: req.params.projectId, submissionId: req.params.submissionId });
+      return exists
+        ? res.status(409).json({ error: LOCKED_MSG })
+        : res.status(404).json({ error: 'Submission not found' });
+    }
 
-    // Sync update to Project.stockReceived embedded array
+    // Sync update to Project.stockReceived embedded array (keep existing approval state)
     await Project.findOneAndUpdate(
       { id: req.params.projectId, 'stockReceived.id': req.params.submissionId },
-      { $set: { 'stockReceived.$': { id: effectiveId, ...rest } } }
+      { $set: { 'stockReceived.$': { id: effectiveId, ...rest, approvalStatus: doc.approvalStatus || 'pending' } } }
     );
 
     const { submissionId, _id: sid, __v: sv, ...out } = doc;
@@ -84,6 +97,11 @@ router.delete('/:projectId/:submissionId', auth, async (req, res) => {
 
     // Find submission first so we know which items to restore
     const submission = await SR.findOne({ projectId, submissionId }).lean();
+
+    // Once the project manager has approved, the record is locked
+    if (submission && submission.approvalStatus === 'approved') {
+      return res.status(409).json({ error: LOCKED_MSG });
+    }
 
     if (submission && Array.isArray(submission.items) && submission.items.length > 0) {
       for (const subItem of submission.items) {

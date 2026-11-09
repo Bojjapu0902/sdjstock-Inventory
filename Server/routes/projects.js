@@ -10,6 +10,8 @@ function recomputeStock(records) {
   }, 0);
 }
 
+const LOCKED_MSG = 'This submission has already been approved by the project manager and can no longer be edited or deleted.';
+
 // ── Project CRUD ─────────────────────────────────────────────────────────────
 
 router.get('/', auth, async (req, res) => {
@@ -97,29 +99,43 @@ router.post('/:id/stock-received', auth, async (req, res) => {
 });
 
 // PUT /api/projects/:id/stock-received/:subId  — replace a submission
+// Only allowed while the submission is still pending manager approval.
 router.put('/:id/stock-received/:subId', auth, async (req, res) => {
   try {
-    const { _id, __v, projectId, ...update } = req.body;
-    const replacement = { ...update, id: update.id || req.params.subId };
+    const { _id, __v, projectId, approvalStatus, approvedAt, approvedBy, ...update } = req.body;
+    const replacement = { ...update, id: update.id || req.params.subId, approvalStatus: 'pending' };
     const doc = await Project.findOneAndUpdate(
-      { id: req.params.id, 'stockReceived.id': req.params.subId },
+      {
+        id: req.params.id,
+        stockReceived: { $elemMatch: { id: req.params.subId, approvalStatus: { $ne: 'approved' } } },
+      },
       { $set: { 'stockReceived.$': replacement } },
       { new: true }
     ).lean();
-    if (!doc) return res.status(404).json({ error: 'Submission not found' });
+    if (!doc) {
+      const exists = await Project.exists({ id: req.params.id, 'stockReceived.id': req.params.subId });
+      return exists
+        ? res.status(409).json({ error: LOCKED_MSG })
+        : res.status(404).json({ error: 'Submission not found' });
+    }
     res.json(doc);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // DELETE /api/projects/:id/stock-received/:subId  — remove a submission
+// Only allowed while the submission is still pending manager approval.
 router.delete('/:id/stock-received/:subId', auth, async (req, res) => {
   try {
     const doc = await Project.findOneAndUpdate(
       { id: req.params.id },
-      { $pull: { stockReceived: { id: req.params.subId } } },
+      { $pull: { stockReceived: { id: req.params.subId, approvalStatus: { $ne: 'approved' } } } },
       { new: true }
     ).lean();
     if (!doc) return res.status(404).json({ error: 'Project not found' });
+    // Submission still present after the pull => it was approved and is locked
+    if ((doc.stockReceived || []).some((s) => s.id === req.params.subId)) {
+      return res.status(409).json({ error: LOCKED_MSG });
+    }
     res.json(doc);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

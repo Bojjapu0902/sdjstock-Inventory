@@ -2,6 +2,7 @@
 //  Login Authentication — MongoDB-backed via REST API
 // =====================================================
 import api from './api';
+import { DEMO_USER, DEMO_USERNAME, DEMO_PASSWORD, DEMO_TOKEN } from './demoSandbox';
 
 const SESSION_KEY = 'adjmarine_current_user';
 
@@ -15,6 +16,12 @@ const SESSION_KEY = 'adjmarine_current_user';
  */
 export async function authenticate(username, password) {
   if (!username || !password) return null;
+
+  // Demo account: validated locally, never sent to the server.
+  if (username.trim().toLowerCase() === DEMO_USERNAME) {
+    return password.trim() === DEMO_PASSWORD ? { ...DEMO_USER, token: DEMO_TOKEN } : null;
+  }
+
   try {
     const { user, token } = await api.post('/auth/login', {
       username: username.trim().toLowerCase(),

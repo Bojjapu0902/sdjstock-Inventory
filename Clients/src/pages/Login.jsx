@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MdVisibility, MdVisibilityOff, MdLock, MdPerson, MdRestaurant } from 'react-icons/md';
 import { authenticate, setCurrentUser, forgotPassword, verifyOtp, resetPassword } from '../services/loginDb';
+import { DEMO_USERNAME, DEMO_PASSWORD } from '../services/demoSandbox';
 const LOGO_SRC = `${process.env.PUBLIC_URL}/asserts/images/logo.webp`;
 const Login = ({ onLogin }) => {
   const [username, setUsername]   = useState('');
@@ -55,7 +56,7 @@ const Login = ({ onLogin }) => {
 
     authenticate(username.trim(), password).then((user) => {
       if (user) {
-        const sessionUser = { username: user.username, role: user.role, name: user.name, projectId: user.projectId || null, email: user.email || '', phone: user.phone || '', id: user.id, token: user.token };
+        const sessionUser = { username: user.username, role: user.role, name: user.name, projectId: user.projectId || null, email: user.email || '', phone: user.phone || '', id: user.id, token: user.token, isDemo: !!user.isDemo };
         setCurrentUser(sessionUser);
         setAuthUser(sessionUser);
         setTimeout(() => onLogin(sessionUser), 2200);
@@ -690,6 +691,31 @@ const Login = ({ onLogin }) => {
             </div>
             <div style={{ fontSize: 14, color: '#64748B' }}>
               Sign in to your SDJ MARINE PVT. LTD account
+            </div>
+          </div>
+
+          {/* Demo user credentials + permissions */}
+          <div className="login-demo-card">
+            <div className="login-demo-head">
+              <span className="login-demo-badge">DEMO USER</span>
+              <span className="login-demo-title">Try the app with a sandbox account</span>
+            </div>
+            <div className="login-demo-creds">
+              <div>Username: <strong>{DEMO_USERNAME}</strong></div>
+              <div>Password: <strong>{DEMO_PASSWORD}</strong></div>
+              <button
+                type="button"
+                className="login-demo-fill"
+                onClick={() => { setUsername(DEMO_USERNAME); setPassword(DEMO_PASSWORD); setError(''); setFieldErr({ username: false, password: false }); }}
+              >
+                Fill in
+              </button>
+            </div>
+            <div className="login-demo-note">
+              You will sign in with <strong>User</strong> permission. You can add and delete items,
+              create projects and assign stock to them. The demo comes with 10 sample records, and
+              everything you change is private to this browser. It never affects the live application
+              or its database. User management is not available to this role.
             </div>
           </div>
 

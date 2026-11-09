@@ -56,7 +56,7 @@ const App = () => {
                 <Route path="/reports"      element={<Reports />}        />
                 <Route path="/settings"     element={<Settings />}       />
                 <Route path="/projects"     element={<Projects />}       />
-                <Route path="/users"        element={<Users />}          />
+                <Route path="/users"        element={user.isDemo ? <Navigate to="/" replace /> : <Users />} />
                 <Route path="/profile"      element={<Profile />}        />
                 <Route path="*"             element={<Navigate to="/" replace />} />
               </Routes>

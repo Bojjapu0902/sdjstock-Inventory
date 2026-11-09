@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import './Layout.css';
 import Sidebar from './Sidebar';
 import Header  from './Header';
+import DemoBanner from '../common/DemoBanner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIdleTimeout } from '../../hooks/useIdleTimeout';
 
@@ -187,6 +188,7 @@ const Layout = ({ children }) => {
       />
       <div className="main-content">
         <Header onMenuClick={handleMenuClick} />
+        <DemoBanner />
         <main className="page-body">
           {children}
         </main>
