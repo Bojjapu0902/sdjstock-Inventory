@@ -4,20 +4,26 @@ import api from '../services/api';
 const InventoryStockContext = createContext(null);
 
 export function InventoryStockProvider({ children }) {
+  const [items,    setItems]    = useState([]);
   const [stockMap, setStockMap] = useState({});
   const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState(false);
 
-  // Fetch live stock map from API on mount
+  const applyItems = useCallback((list) => {
+    const map = {};
+    list.forEach((item) => { map[item.id] = item.currentStock; });
+    setItems(list);
+    setStockMap(map);
+    setError(false);
+  }, []);
+
+  // Fetch live items and stock from the API on mount
   useEffect(() => {
     api.get('/inventory')
-      .then((items) => {
-        const map = {};
-        items.forEach((item) => { map[item.id] = item.currentStock; });
-        setStockMap(map);
-      })
-      .catch(console.error)
+      .then(applyItems)
+      .catch((err) => { console.error(err); setError(true); })
       .finally(() => setLoading(false));
-  }, []);
+  }, [applyItems]);
 
   /** Subtract quantities from inventory (project stock-in). */
   const deductStock = useCallback(async (items) => {
@@ -48,15 +54,15 @@ export function InventoryStockProvider({ children }) {
     } catch (err) { console.error('adjustStock error:', err); }
   }, [stockMap]);
 
-  /** Re-fetch the full stock map from the server. */
+  /** Re-fetch all items and stock from the server. */
   const refreshAll = useCallback(async () => {
     try {
-      const items = await api.get('/inventory');
-      const map = {};
-      items.forEach((item) => { map[item.id] = item.currentStock; });
-      setStockMap(map);
-    } catch (err) { console.error('refreshAll error:', err); }
-  }, []);
+      applyItems(await api.get('/inventory'));
+    } catch (err) {
+      console.error('refreshAll error:', err);
+      setError(true);
+    }
+  }, [applyItems]);
 
   /** Update a single item's stock in the map (no API call). */
   const syncItemStock = useCallback((itemId, newQty) => {
@@ -64,7 +70,7 @@ export function InventoryStockProvider({ children }) {
   }, []);
 
   return (
-    <InventoryStockContext.Provider value={{ stockMap, loading, deductStock, restoreStock, adjustStock, refreshAll, syncItemStock }}>
+    <InventoryStockContext.Provider value={{ items, stockMap, loading, error, deductStock, restoreStock, adjustStock, refreshAll, syncItemStock }}>
       {children}
     </InventoryStockContext.Provider>
   );

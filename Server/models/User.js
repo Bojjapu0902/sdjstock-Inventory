@@ -6,13 +6,16 @@ const userSchema = new mongoose.Schema({
   password:  { type: String, required: true },
   role:      { type: String, enum: ['Admin', 'User'], default: 'User' },
   name:      { type: String, default: '' },
-  projectId: { type: String, default: null },
   email:     { type: String, default: '' },
   phone:     { type: String, default: '' },
   avatar:         { type: String, default: '' },
   isActive:       { type: Boolean, default: true },
   createdAt:      { type: String, default: () => new Date().toISOString().split('T')[0] },
-  resetOtp:       { type: String, default: null },
+  // The admin who created this account. The name is kept as it was at the time, so
+  // it still reads correctly if that admin is later renamed or removed.
+  createdById:    { type: String, default: '' },
+  createdByName:  { type: String, default: '' },
+  resetOtp:      { type: String, default: null },
   resetOtpExpiry: { type: Date,   default: null },
   resetOtpAttempts: { type: Number, default: 0 },
 });

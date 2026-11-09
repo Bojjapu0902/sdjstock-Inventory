@@ -38,7 +38,10 @@ const projectSchema = new mongoose.Schema({
   email:         { type: String, default: '' },
   description:   { type: String, default: '' },
   capacity:      { type: String, default: '' },
-  createdAt:     { type: String, default: () => new Date().toISOString().split('T')[0] },
+  // The one user in charge of this project (User.id). A single field, so a project
+  // can never belong to two users; one user can be on many projects.
+  assignedUserId: { type: String, default: null, index: true },
+  createdAt:    { type: String, default: () => new Date().toISOString().split('T')[0] },
   stockReceived: { type: [stockSubmissionSchema], default: [] },
 });
 

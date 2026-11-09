@@ -3,6 +3,7 @@ const auth    = require('../middleware/auth');
 const SR      = require('../models/StockReceived');
 const Item    = require('../models/InventoryItem');
 const Project = require('../models/Project');
+const { requireProjectAccess, ownStockFilter } = require('../middleware/access');
 
 function recomputeStock(records) {
   return (records || []).reduce((total, r) => {
@@ -14,7 +15,7 @@ function recomputeStock(records) {
 // GET /api/stock-received  → { [projectId]: Submission[] }
 router.get('/', auth, async (req, res) => {
   try {
-    const docs = await SR.find({}).lean();
+    const docs = await SR.find(await ownStockFilter(req)).lean();
     const map = {};
     docs.forEach((d) => {
       const { submissionId, projectId, _id, __v, ...rest } = d;
@@ -26,7 +27,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // GET /api/stock-received/:projectId → Submission[]
-router.get('/:projectId', auth, async (req, res) => {
+router.get('/:projectId', auth, requireProjectAccess, async (req, res) => {
   try {
     const docs = await SR.find({ projectId: req.params.projectId }).lean();
     res.json(docs.map(({ submissionId, _id, __v, ...rest }) => ({ id: submissionId, ...rest })));
@@ -34,7 +35,7 @@ router.get('/:projectId', auth, async (req, res) => {
 });
 
 // POST /api/stock-received/:projectId
-router.post('/:projectId', auth, async (req, res) => {
+router.post('/:projectId', auth, requireProjectAccess, async (req, res) => {
   try {
     const { id, ...rest } = req.body;
 
@@ -56,7 +57,7 @@ const LOCKED_MSG = 'This submission has already been approved by the project man
 
 // PUT /api/stock-received/:projectId/:submissionId
 // Only allowed while the submission is still pending manager approval.
-router.put('/:projectId/:submissionId', auth, async (req, res) => {
+router.put('/:projectId/:submissionId', auth, requireProjectAccess, async (req, res) => {
   try {
     // Approval fields are controlled only by the /approve route
     const { id, _id, __v, approvalStatus, approvedAt, approvedBy, ...rest } = req.body;
@@ -91,7 +92,7 @@ router.put('/:projectId/:submissionId', auth, async (req, res) => {
 });
 
 // DELETE /api/stock-received/:projectId/:submissionId
-router.delete('/:projectId/:submissionId', auth, async (req, res) => {
+router.delete('/:projectId/:submissionId', auth, requireProjectAccess, async (req, res) => {
   try {
     const { projectId, submissionId } = req.params;
 
@@ -139,7 +140,7 @@ router.delete('/:projectId/:submissionId', auth, async (req, res) => {
 });
 
 // POST /api/stock-received/:projectId/:submissionId/approve
-router.post('/:projectId/:submissionId/approve', auth, async (req, res) => {
+router.post('/:projectId/:submissionId/approve', auth, requireProjectAccess, async (req, res) => {
   try {
     const { approvalItems, approvedBy } = req.body;
     const doc = await SR.findOne({ projectId: req.params.projectId, submissionId: req.params.submissionId });

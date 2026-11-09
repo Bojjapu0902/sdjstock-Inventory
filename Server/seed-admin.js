@@ -21,7 +21,6 @@ async function seed() {
       password:  hashed,
       role:      'Admin',
       name:      'SDJ Admin',
-      projectId: null,
       email:     '',
       phone:     '',
       isActive:  true,

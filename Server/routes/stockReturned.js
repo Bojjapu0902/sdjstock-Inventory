@@ -1,11 +1,12 @@
 const router = require('express').Router();
 const auth   = require('../middleware/auth');
 const SR     = require('../models/StockReturned');
+const { requireProjectAccess, ownStockFilter } = require('../middleware/access');
 
 // GET /api/stock-returned  → { [projectId]: StockReturned[] }
 router.get('/', auth, async (req, res) => {
   try {
-    const docs = await SR.find({}).lean();
+    const docs = await SR.find(await ownStockFilter(req)).lean();
     const map = {};
     docs.forEach((d) => {
       if (!map[d.projectId]) map[d.projectId] = [];
@@ -17,7 +18,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // GET /api/stock-returned/:projectId
-router.get('/:projectId', auth, async (req, res) => {
+router.get('/:projectId', auth, requireProjectAccess, async (req, res) => {
   try {
     const docs = await SR.find({ projectId: req.params.projectId }).lean();
     res.json(docs.map(({ _id, __v, ...r }) => r));
@@ -25,7 +26,7 @@ router.get('/:projectId', auth, async (req, res) => {
 });
 
 // POST /api/stock-returned/:projectId
-router.post('/:projectId', auth, async (req, res) => {
+router.post('/:projectId', auth, requireProjectAccess, async (req, res) => {
   try {
     const id  = `SRT-${Date.now()}`;
     const doc = await SR.create({ id, projectId: req.params.projectId, ...req.body });
@@ -35,7 +36,7 @@ router.post('/:projectId', auth, async (req, res) => {
 });
 
 // PUT /api/stock-returned/:projectId/:recordId
-router.put('/:projectId/:recordId', auth, async (req, res) => {
+router.put('/:projectId/:recordId', auth, requireProjectAccess, async (req, res) => {
   try {
     const doc = await SR.findOneAndUpdate(
       { projectId: req.params.projectId, id: req.params.recordId },
@@ -49,7 +50,7 @@ router.put('/:projectId/:recordId', auth, async (req, res) => {
 });
 
 // DELETE /api/stock-returned/:projectId/:recordId
-router.delete('/:projectId/:recordId', auth, async (req, res) => {
+router.delete('/:projectId/:recordId', auth, requireProjectAccess, async (req, res) => {
   try {
     await SR.findOneAndDelete({ projectId: req.params.projectId, id: req.params.recordId });
     res.json({ success: true });

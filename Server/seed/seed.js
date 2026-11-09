@@ -14,10 +14,10 @@ const StockUsed     = require('../models/StockUsed');
 // ── Seed data (copied from Clients/src/data/) ─────────────────────────
 
 const USERS = [
-  { id: 'USR-000', username: 'sdj',        password: 'sdj123@',     role: 'Admin', name: 'System Admin',         projectId: null,    createdAt: '2026-01-01' },
-  { id: 'USR-001', username: 'kitchen_a',  password: 'kitchen@123', role: 'User',  name: 'Main Kitchen — Block A',projectId: 'PRJ-001', createdAt: '2026-01-15' },
-  { id: 'USR-002', username: 'canteen_b',  password: 'canteen@123', role: 'User',  name: 'Staff Canteen — Block B',projectId: 'PRJ-002', createdAt: '2026-02-10' },
-  { id: 'USR-003', username: 'vessel_mv1', password: 'vessel@123',  role: 'User',  name: 'Offshore Vessel — MV Adjmarine', projectId: 'PRJ-003', createdAt: '2026-03-01' },
+  { id: 'USR-000', username: 'sdj',        password: 'sdj123@',     role: 'Admin', name: 'System Admin',         createdAt: '2026-01-01' },
+  { id: 'USR-001', username: 'kitchen_a',  password: 'kitchen@123', role: 'User',  name: 'Main Kitchen — Block A', createdAt: '2026-01-15' },
+  { id: 'USR-002', username: 'canteen_b',  password: 'canteen@123', role: 'User',  name: 'Staff Canteen — Block B', createdAt: '2026-02-10' },
+  { id: 'USR-003', username: 'vessel_mv1', password: 'vessel@123',  role: 'User',  name: 'Offshore Vessel — MV Adjmarine', createdAt: '2026-03-01' },
 ];
 
 const INVENTORY_ITEMS = [
@@ -164,7 +164,7 @@ const PROJECTS = [
     address:'Plot 12, KPHB Industrial Area, Kukatpally, Hyderabad – 500072',
     status:'Active', manager:'Rajesh Kumar', phone:'+91 98765 43210',
     email:'rajesh@adjmarine.com', description:'Primary kitchen facility for daily meal preparation',
-    username:'kitchen_a', password:'kitchen@123', capacity:'500', createdAt:'2026-01-15',
+    username:'kitchen_a', password:'kitchen@123', capacity:'500', createdAt:'2026-01-15', assignedUserId:'USR-001',
     stockReceived: [
       { id:'SR-1736935200000', adminName:'sdj', date:'15 Jan 2026', time:'11:00 AM',
         submittedAt:'2026-01-15T11:00:00.000Z', totalValue:5980, approvalStatus:'pending',
@@ -187,7 +187,7 @@ const PROJECTS = [
     address:'Block B, Corporate Campus, Gachibowli, Hyderabad – 500032',
     status:'Under Maintenance', manager:'Sunita Rao', phone:'+91 91234 56789',
     email:'sunita@adjmarine.com', description:'Staff canteen serving 200+ employees',
-    username:'canteen_b', password:'canteen@123', capacity:'200', createdAt:'2026-02-10',
+    username:'canteen_b', password:'canteen@123', capacity:'200', createdAt:'2026-02-10', assignedUserId:'USR-002',
     stockReceived: [],
   },
   {
@@ -195,7 +195,7 @@ const PROJECTS = [
     address:'Berth 14, Outer Harbour, Visakhapatnam Port – 530035',
     status:'Active', manager:'Capt. Arjun Nair', phone:'+91 94455 66778',
     email:'arjun@adjmarine.com', description:'Galley stock for offshore crew (30 persons)',
-    username:'vessel_mv1', password:'vessel@123', capacity:'30', createdAt:'2026-03-01',
+    username:'vessel_mv1', password:'vessel@123', capacity:'30', createdAt:'2026-03-01', assignedUserId:'USR-003',
     stockReceived: [
       { id:'SR-1740826800000', adminName:'sdj', date:'01 Mar 2026', time:'08:00 AM',
         submittedAt:'2026-03-01T08:00:00.000Z', totalValue:9070, approvalStatus:'pending',

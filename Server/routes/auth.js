@@ -92,6 +92,38 @@ async function assertValidOtp(user, otp) {
   throw new HttpError(400, `Invalid OTP. ${remaining} attempt${remaining === 1 ? '' : 's'} left.`);
 }
 
+/** Stores a new OTP and emails it. Returns the masked address it went to. */
+async function issueOtp(user, logTag) {
+  if (!user.email) throw new HttpError(400, 'No email address on file for this account. Contact an admin.');
+
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.error(`[${logTag}] SMTP_USER / SMTP_PASS are not set on the server`);
+    throw new HttpError(503, 'Email service is not configured on the server. Contact an admin.');
+  }
+
+  const otp = String(crypto.randomInt(100000, 1000000));
+  await User.updateOne(
+    { _id: user._id },
+    { resetOtp: otp, resetOtpExpiry: new Date(Date.now() + OTP_TTL_MS), resetOtpAttempts: 0 }
+  );
+
+  try {
+    await makeTransporter().sendMail({
+      from: process.env.SMTP_FROM || `"SDJ Marine" <${process.env.SMTP_USER}>`,
+      to:   user.email,
+      subject: 'Your SDJ Marine password OTP',
+      html: otpEmailHtml(otp, user.username),
+    });
+  } catch (err) {
+    // Nobody received this OTP, so don't leave it valid.
+    await User.updateOne({ _id: user._id }, OTP_CLEARED).catch(() => {});
+    console.error(`[${logTag}] send failed:`, err.code, err.message);
+    throw new HttpError(502, `Could not send the OTP email${err.code ? ` (${err.code})` : ''}. Please try again or contact an admin.`);
+  }
+
+  return user.email.replace(/(.{2}).+(@.+)/, '$1***$2');
+}
+
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
@@ -116,7 +148,6 @@ router.post('/login', async (req, res) => {
         username: user.username,
         role: user.role,
         name: user.name,
-        projectId: user.projectId,
       },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
@@ -128,7 +159,6 @@ router.post('/login', async (req, res) => {
         username: user.username,
         role: user.role,
         name: user.name,
-        projectId: user.projectId,
         email: user.email,
         phone: user.phone,
         avatar: user.avatar || '',
@@ -143,7 +173,6 @@ router.post('/login', async (req, res) => {
 
 // POST /api/auth/forgot-password
 router.post('/forgot-password', async (req, res) => {
-  let otpStoredFor = null;
   try {
     const { username } = req.body;
     if (!username) return res.status(400).json({ error: 'Username or email is required' });
@@ -151,37 +180,10 @@ router.post('/forgot-password', async (req, res) => {
     const user = await findByIdentifier(username);
     if (!user) return res.status(404).json({ error: 'No account found with that username or email' });
     if (user.isActive === false) return res.status(403).json({ error: 'This account has been deactivated. Contact an admin.' });
-    if (!user.email) return res.status(400).json({ error: 'No email address on file for this account. Contact an admin.' });
 
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      console.error('[forgot-password] SMTP_USER / SMTP_PASS are not set on the server');
-      return res.status(503).json({ error: 'Email service is not configured on the server. Contact an admin.' });
-    }
-
-    const otp = String(crypto.randomInt(100000, 1000000));
-    await User.updateOne(
-      { _id: user._id },
-      { resetOtp: otp, resetOtpExpiry: new Date(Date.now() + OTP_TTL_MS), resetOtpAttempts: 0 }
-    );
-    otpStoredFor = user._id;
-
-    await makeTransporter().sendMail({
-      from: process.env.SMTP_FROM || `"SDJ Marine" <${process.env.SMTP_USER}>`,
-      to:   user.email,
-      subject: 'Your SDJ Marine password reset OTP',
-      html: otpEmailHtml(otp, user.username),
-    });
-
-    res.json({ message: 'OTP sent', email: user.email.replace(/(.{2}).+(@.+)/, '$1***$2') });
+    res.json({ message: 'OTP sent', email: await issueOtp(user, 'forgot-password') });
   } catch (err) {
-    if (err.status) return sendError(res, err);
-
-    // Nobody received this OTP, so don't leave it valid.
-    if (otpStoredFor) await User.updateOne({ _id: otpStoredFor }, OTP_CLEARED).catch(() => {});
-    console.error('[forgot-password] send failed:', err.code, err.message);
-    res.status(502).json({
-      error: `Could not send the OTP email${err.code ? ` (${err.code})` : ''}. Please try again or contact an admin.`,
-    });
+    sendError(res, err);
   }
 });
 
@@ -245,6 +247,40 @@ router.put('/change-password', auth, async (req, res) => {
     res.json({ message: 'Password changed successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/change-password/send-otp  — email a code to the signed-in user
+router.post('/change-password/send-otp', auth, async (req, res) => {
+  try {
+    const user = await User.findByAnyId(req.user.id);
+    if (!user) throw new HttpError(404, 'User not found');
+    res.json({ message: 'OTP sent', email: await issueOtp(user, 'change-password') });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /api/auth/change-password/confirm  — set a new password using the emailed code
+router.post('/change-password/confirm', auth, async (req, res) => {
+  try {
+    const { otp, newPassword } = req.body;
+    if (!otp || !newPassword) throw new HttpError(400, 'All fields required');
+
+    const password = String(newPassword).trim();
+    if (password.length < 6) throw new HttpError(400, 'New password must be at least 6 characters');
+
+    const user = await User.findByAnyId(req.user.id);
+    if (!user) throw new HttpError(404, 'User not found');
+
+    await assertValidOtp(user, otp);
+
+    const hashed = await bcrypt.hash(password, 10);
+    await User.updateOne({ _id: user._id }, { password: hashed, ...OTP_CLEARED });
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (err) {
+    sendError(res, err);
   }
 });
 

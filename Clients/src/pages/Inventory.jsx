@@ -1,7 +1,8 @@
 import './Inventory.css';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useInventoryStock } from '../hooks/useInventoryStock';
-import { getEnrichedItems, getStockStatus } from '../services/mockData';
+import { getStockStatus } from '../services/mockData';
 
 const PAGE_SIZE = 24;
 
@@ -30,7 +31,7 @@ function getCategoryColor(cat) {
 function getStockMeta(item) {
   if (item.currentStock === 0)
     return { label: 'Out of Stock', color: '#EF4444', bg: '#FEF2F2', pct: 0 };
-  const status = getStockStatus(item.currentStock, item.minStock, item.maxStock);
+  const status = getStockStatus(item.currentStock, item.minStock);
   const pct = item.maxStock > 0
     ? Math.min(100, Math.round((item.currentStock / item.maxStock) * 100))
     : 100;
@@ -40,27 +41,39 @@ function getStockMeta(item) {
 }
 
 const Inventory = () => {
-  const { stockMap, loading } = useInventoryStock();
+  const { items: allItems, stockMap, loading, error, refreshAll } = useInventoryStock();
   const [search, setSearch] = useState('');
   const [page, setPage]     = useState(1);
 
+  // The list is shared across pages, so reload it when returning here in case
+  // items were added or removed. On first load the provider is already fetching.
+  useEffect(() => {
+    if (!loading) refreshAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const items = useMemo(() =>
-    getEnrichedItems().map((item) => ({
-      ...item,
-      currentStock: stockMap[item.id] ?? item.currentStock,
-    })),
-  [stockMap]);
+    allItems
+      .filter((item) => item.active !== false)
+      .map((item) => ({
+        ...item,
+        currentStock: stockMap[item.id] ?? item.currentStock,
+      })),
+  [allItems, stockMap]);
 
   const summary = useMemo(() => {
-    let inStock = 0, low = 0, out = 0, critical = 0;
+    let inStock = 0, low = 0, out = 0;
     for (const i of items) {
-      if (i.currentStock === 0)                                                               out++;
-      else if (getStockStatus(i.currentStock, i.minStock, i.maxStock).label === 'Low Stock') low++;
-      else                                                                                    inStock++;
-      if (i.urgency === 'critical' || i.urgency === 'high') critical++;
+      const { label } = getStockStatus(i.currentStock, i.minStock);
+      if (label === 'Out of Stock')   out++;
+      else if (label === 'Low Stock') low++;
+      else                            inStock++;
     }
-    return { total: items.length, inStock, low, out, critical };
+    return { total: items.length, inStock, low, out, reorder: low + out };
   }, [items]);
+
+  const failedToLoad = error && items.length === 0;
+  const showCounts   = !loading && !failedToLoad;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -79,7 +92,7 @@ const Inventory = () => {
     { label: 'In Stock',      val: summary.inStock,  color: '#10B981',        icon: '✅' },
     { label: 'Low Stock',     val: summary.low,      color: '#F59E0B',        icon: '⚠️' },
     { label: 'Out of Stock',  val: summary.out,      color: '#EF4444',        icon: '❌' },
-    { label: 'Needs Reorder', val: summary.critical, color: '#EF4444',        icon: '🔄' },
+    { label: 'Needs Reorder', val: summary.reorder,  color: '#EF4444',        icon: '🔄' },
   ];
 
   return (
@@ -98,7 +111,7 @@ const Inventory = () => {
           <div key={s.label} className="inv-summary-card">
             <div className="inv-summary-icon">{s.icon}</div>
             <div>
-              <div className="inv-summary-val" style={{ color: s.color }}>{s.val}</div>
+              <div className="inv-summary-val" style={{ color: s.color }}>{showCounts ? s.val : '—'}</div>
               <div className="inv-summary-label">{s.label}</div>
             </div>
           </div>
@@ -147,6 +160,18 @@ const Inventory = () => {
           <div className="inv-state-placeholder">
             <div className="inv-spinner" />
             <span>Loading stock data…</span>
+          </div>
+        ) : failedToLoad ? (
+          <div className="inv-state-placeholder" role="alert">
+            <div className="inv-state-title">Could not load inventory</div>
+            <div className="inv-state-sub">Please check your connection and try again.</div>
+            <button type="button" className="btn-secondary-fsp inv-state-action" onClick={refreshAll}>Try Again</button>
+          </div>
+        ) : allItems.length === 0 ? (
+          <div className="inv-state-placeholder">
+            <div className="inv-state-title">No items yet</div>
+            <div className="inv-state-sub">Items you add will appear here.</div>
+            <Link to="/add-items" className="btn-primary-fsp inv-state-action">Add Items</Link>
           </div>
         ) : paged.length === 0 ? (
           <div className="inv-state-placeholder">

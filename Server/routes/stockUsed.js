@@ -1,11 +1,12 @@
 const router = require('express').Router();
 const auth   = require('../middleware/auth');
 const SU     = require('../models/StockUsed');
+const { requireProjectAccess, ownStockFilter } = require('../middleware/access');
 
 // GET /api/stock-used  → { [projectId]: StockUsed[] }
 router.get('/', auth, async (req, res) => {
   try {
-    const docs = await SU.find({}).lean();
+    const docs = await SU.find(await ownStockFilter(req)).lean();
     const map = {};
     docs.forEach((d) => {
       if (!map[d.projectId]) map[d.projectId] = [];
@@ -17,7 +18,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // GET /api/stock-used/:projectId
-router.get('/:projectId', auth, async (req, res) => {
+router.get('/:projectId', auth, requireProjectAccess, async (req, res) => {
   try {
     const docs = await SU.find({ projectId: req.params.projectId }).lean();
     res.json(docs.map(({ _id, __v, ...r }) => r));
@@ -25,7 +26,7 @@ router.get('/:projectId', auth, async (req, res) => {
 });
 
 // POST /api/stock-used/:projectId
-router.post('/:projectId', auth, async (req, res) => {
+router.post('/:projectId', auth, requireProjectAccess, async (req, res) => {
   try {
     const id = `SU-${Date.now()}`;
     const doc = await SU.create({ id, projectId: req.params.projectId, ...req.body });
@@ -35,7 +36,7 @@ router.post('/:projectId', auth, async (req, res) => {
 });
 
 // PUT /api/stock-used/:projectId/:recordId
-router.put('/:projectId/:recordId', auth, async (req, res) => {
+router.put('/:projectId/:recordId', auth, requireProjectAccess, async (req, res) => {
   try {
     const doc = await SU.findOneAndUpdate(
       { projectId: req.params.projectId, id: req.params.recordId },
@@ -49,7 +50,7 @@ router.put('/:projectId/:recordId', auth, async (req, res) => {
 });
 
 // DELETE /api/stock-used/:projectId/:recordId
-router.delete('/:projectId/:recordId', auth, async (req, res) => {
+router.delete('/:projectId/:recordId', auth, requireProjectAccess, async (req, res) => {
   try {
     await SU.findOneAndDelete({ projectId: req.params.projectId, id: req.params.recordId });
     res.json({ success: true });

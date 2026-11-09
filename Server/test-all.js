@@ -50,10 +50,9 @@ async function run() {
   console.log('\n[USERS]');
   check('GET  /users', await req('GET', '/api/users', null, token), 200);
   const newUser = await req('POST', '/api/users', {
-    username: 'testuser99', password: 'Test@123', role: 'User',
-    name: 'Test User', email: 't@t.com', phone: '123', projectId: 'PRJ-001'
+    role: 'User', name: 'Test User', email: `test-${Date.now()}@example.com`, phone: '123', projectIds: []
   }, token);
-  const userId = check('POST /users', newUser, 201) && newUser.b.id;
+  const userId = check('POST /users', newUser, 201) && newUser.b.user.id;
   if (userId) {
     check('PUT  /users/:id (with _id/__v in body)', await req('PUT', '/api/users/' + userId, { name: 'Test Updated', _id: 'fake', __v: 0 }, token), 200);
     check('DEL  /users/:id', await req('DELETE', '/api/users/' + userId, null, token), 200);

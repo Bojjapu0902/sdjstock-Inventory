@@ -1,6 +1,6 @@
 ﻿import './ProjectDetails.css';
 import React, { useState, useMemo, useCallback } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, Link } from 'react-router-dom';
 import {
   MdWarehouse, MdLocationOn, MdPerson, MdPhone, MdEmail,
   MdInbox, MdOutbox, MdLogout, MdRestaurant,
@@ -989,7 +989,7 @@ const InhouseDetailModal = ({ item, stockReceived, stockUsed, stockReturned, onC
 const ProjectDetails = () => {
   const { projectId }  = useParams();
   const { user: ctxUser, logout, login } = useAuth();
-  const { projects, stockReceived: allReceived, stockUsed: allUsed, stockReturned: allReturned, approveSubmission, addStockUsed, updateStockUsed, deleteStockUsed, addStockReturned, updateStockReturned, deleteStockReturned } = useProjects();
+  const { projects, loading: projectsLoading, stockReceived: allReceived, stockUsed: allUsed, stockReturned: allReturned, approveSubmission, addStockUsed, updateStockUsed, deleteStockUsed, addStockReturned, updateStockReturned, deleteStockReturned } = useProjects();
   const currentUser = ctxUser || getCurrentUser();
 
   /* ── UI state ── */
@@ -1170,10 +1170,12 @@ const ProjectDetails = () => {
     finally { setDeletingReturned(false); setDeleteReturnedRecord(null); }
   }, [deleteStockReturned, projectId]);
 
-  /* ── security guard: must own this project ── */
-  if (!currentUser || (currentUser.role !== 'Admin' && currentUser.projectId !== projectId)) {
-    return <Navigate to="/" replace />;
-  }
+  /* ── security guard: admins, or the user this active project is assigned to ── */
+  const isAdmin = currentUser?.role === 'Admin';
+  if (!currentUser || currentUser.isDemo) return <Navigate to="/" replace />;
+  if (projectsLoading) return null;
+  // For a user, the server only returns projects assigned to them.
+  if (!isAdmin && (!project || project.status === 'Inactive')) return <Navigate to="/" replace />;
 
   /* ── project not found ── */
   if (!project) {
@@ -1206,6 +1208,14 @@ const ProjectDetails = () => {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {!isAdmin && (
+            <Link
+              to="/my-projects"
+              style={{ padding: '7px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, color: 'rgba(199,210,254,0.9)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
+            >
+              My Projects
+            </Link>
+          )}
           {/* Profile avatar button */}
           <button
             onClick={() => setProfileOpen(true)}

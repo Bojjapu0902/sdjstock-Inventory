@@ -76,33 +76,6 @@ export async function deleteUser(_users, userId) {
   await api.delete(`/users/${userId}`);
 }
 
-export async function addProjectUser(_users, formData) {
-  return api.post('/users', { ...formData, role: 'User' });
-}
-
-export async function updateProjectUser(_users, { projectId, projectName, username, password }) {
-  const users = await getUsers();
-  const existing = users.find((u) => u.projectId === projectId);
-  if (!username && !password) {
-    if (existing) await api.delete(`/users/${existing.id}`);
-    return;
-  }
-  if (existing) {
-    return api.put(`/users/${existing.id}`, {
-      username: username || existing.username,
-      password: password || undefined,
-      name: projectName,
-    });
-  }
-  return addProjectUser(null, { projectId, projectName: projectName, username, password });
-}
-
-export async function deleteProjectUser(_users, projectId) {
-  const users = await getUsers();
-  const user  = users.find((u) => u.projectId === projectId);
-  if (user) await api.delete(`/users/${user.id}`);
-}
-
 export function saveUsers() { /* no-op: API handles persistence */ }
 export function clearUsers() { /* no-op */ }
 
@@ -110,12 +83,12 @@ export function clearUsers() { /* no-op */ }
    PASSWORD RESET
    ══════════════════════════════════════════════════ */
 
-export async function changePassword(currentPassword, newPassword) {
-  try {
-    return await api.put('/auth/change-password', { currentPassword, newPassword });
-  } catch (err) {
-    throw new Error(err.message || 'Failed to change password');
-  }
+export async function sendChangePasswordOtp() {
+  return api.post('/auth/change-password/send-otp', {});
+}
+
+export async function confirmChangePassword(otp, newPassword) {
+  return api.post('/auth/change-password/confirm', { otp: otp.trim(), newPassword });
 }
 
 export async function forgotPassword(username) {

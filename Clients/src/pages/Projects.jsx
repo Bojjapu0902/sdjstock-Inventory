@@ -1568,7 +1568,7 @@ const ProjectDetail = ({ project, onBack, stockReceived, stockUsed, onAddStock, 
    PROJECTS  —  list view
    ══════════════════════════════════════════════════════════ */
 const Projects = () => {
-  const { projects, stockReceived, stockUsed, addProject, updateProject, deleteProject, addStockReceived, updateStockReceived, deleteStockReceived } = useProjects();
+  const { projects, users, stockReceived, stockUsed, addProject, updateProject, deleteProject, addStockReceived, updateStockReceived, deleteStockReceived } = useProjects();
   const { user }        = useAuth();
   const { deductStock, refreshAll } = useInventoryStock();
 
@@ -1777,6 +1777,7 @@ const Projects = () => {
                         <th>Location</th>
                         <th>Address</th>
                         <th>Manager</th>
+                        <th>Assigned To</th>
                         <th>Contact</th>
                         <th>Status</th>
                         <th>Created</th>
@@ -1785,7 +1786,7 @@ const Projects = () => {
                     </thead>
                     <tbody>
                       {filtered.length === 0 ? (
-                        <tr><td colSpan={8} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>No projects match your search.</td></tr>
+                        <tr><td colSpan={9} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)' }}>No projects match your search.</td></tr>
                       ) : (
                         filtered.map((proj) => {
                           const sc       = STATUS_STYLE[proj.status] || STATUS_STYLE.Active;
@@ -1822,6 +1823,14 @@ const Projects = () => {
                                 {proj.manager
                                   ? <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}><MdPerson style={{ color: 'var(--text-muted)' }} />{proj.manager}</div>
                                   : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>}
+                              </td>
+                              <td style={{ fontSize: 13 }}>
+                                {(() => {
+                                  const assignee = users.find((u) => u.id === proj.assignedUserId);
+                                  return assignee
+                                    ? (assignee.name || assignee.username)
+                                    : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Unassigned</span>;
+                                })()}
                               </td>
                               <td>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>

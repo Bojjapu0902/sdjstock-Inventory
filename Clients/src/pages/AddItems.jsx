@@ -66,7 +66,7 @@ const ItemDrawer = ({ item, onClose }) => {
   const usage         = itemUsageData[item.id] || {};
   const daysRemaining = item.dailyUsage > 0 ? Math.floor(item.currentStock / item.dailyUsage) : 999;
   const urgConf       = URGENCY_CONFIG[item.urgency] || URGENCY_CONFIG.low;
-  const { label: stockLabel, type: stockType } = getStockStatus(item.currentStock);
+  const { label: stockLabel, type: stockType } = getStockStatus(item.currentStock, item.minStock);
 
   const weeklyData = (item.history || []).map((v, i) => ({ day: DAY_LABELS[i], consumed: v }));
 
@@ -488,7 +488,7 @@ const AddItems = () => {
       const q = search.toLowerCase();
       const matchSearch = !search || item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || item.supplier.toLowerCase().includes(q);
       const matchCat    = catFilter === 'All Categories' || item.category === catFilter;
-      const { label }   = getStockStatus(item.currentStock);
+      const { label }   = getStockStatus(item.currentStock, item.minStock);
       const matchStatus = statusFilter === 'All' || label === statusFilter;
       return matchSearch && matchCat && matchStatus;
     });
@@ -503,21 +503,20 @@ const AddItems = () => {
         case 'cat-za':     return b.category.localeCompare(a.category) || a.name.localeCompare(b.name);
         case 'stock-hi':   return b.currentStock - a.currentStock;
         case 'stock-lo':   return a.currentStock - b.currentStock;
-        case 'status':     return (SORT_STATUS_ORDER[getStockStatus(a.currentStock).label] ?? 3) - (SORT_STATUS_ORDER[getStockStatus(b.currentStock).label] ?? 3);
+        case 'status':     return (SORT_STATUS_ORDER[getStockStatus(a.currentStock, a.minStock).label] ?? 3) - (SORT_STATUS_ORDER[getStockStatus(b.currentStock, b.minStock).label] ?? 3);
         default:           return 0;
       }
     });
   }, [liveItems, search, catFilter, statusFilter, sortBy]);
 
   const summary = useMemo(() => {
-    let inStock = 0, low = 0, out = 0, critical = 0;
+    let inStock = 0, low = 0, out = 0;
     for (const i of liveItems) {
       if (i.currentStock === 0)                                                              out++;
-      else if (getStockStatus(i.currentStock).label === 'Low Stock') low++;
+      else if (getStockStatus(i.currentStock, i.minStock).label === 'Low Stock') low++;
       else                                                                                   inStock++;
-      if (i.urgency === 'critical' || i.urgency === 'high') critical++;
     }
-    return { total: liveItems.length, inStock, low, out, critical };
+    return { total: liveItems.length, inStock, low, out, critical: low + out };
   }, [liveItems]);
 
   return (
@@ -604,7 +603,7 @@ const AddItems = () => {
           <div style={{ padding: '8px 16px 16px' }}>
             {filteredItems.map((row) => {
               const isOpen = expandedIds.has(row.id);
-              const { label: stockLabel, type: stockType } = getStockStatus(row.currentStock);
+              const { label: stockLabel, type: stockType } = getStockStatus(row.currentStock, row.minStock);
               const conf       = URGENCY_CONFIG[row.urgency] || URGENCY_CONFIG.low;
               const rowHistory = [...(row.stockRecords || [])]
                 .sort((a, b) => new Date(b.timestamp || b.date) - new Date(a.timestamp || a.date));

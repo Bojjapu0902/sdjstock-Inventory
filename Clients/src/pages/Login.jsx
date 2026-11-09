@@ -55,7 +55,7 @@ const Login = ({ onLogin }) => {
 
     authenticate(username.trim(), password).then((user) => {
       if (user) {
-        const sessionUser = { username: user.username, role: user.role, name: user.name, projectId: user.projectId || null, email: user.email || '', phone: user.phone || '', avatar: user.avatar || '', createdAt: user.createdAt || '', id: user.id, token: user.token, isDemo: !!user.isDemo };
+        const sessionUser = { username: user.username, role: user.role, name: user.name, email: user.email || '', phone: user.phone || '', avatar: user.avatar || '', createdAt: user.createdAt || '', id: user.id, token: user.token, isDemo: !!user.isDemo };
         setCurrentUser(sessionUser);
         setAuthUser(sessionUser);
         setTimeout(() => onLogin(sessionUser), 2200);
@@ -393,7 +393,6 @@ const Login = ({ onLogin }) => {
                   { label: 'User ID',    value: authUser.id,                       icon: '🪪' },
                   { label: 'Username',   value: authUser.username,                  icon: '👤' },
                   { label: 'Role',       value: authUser.role,                      icon: '🔐' },
-                  authUser.projectId && { label: 'Project',  value: authUser.projectId, icon: '🏭' },
                   authUser.email    && { label: 'Email',     value: authUser.email,     icon: '📧' },
                   authUser.phone    && { label: 'Phone',     value: authUser.phone,     icon: '📞' },
                   { label: 'Session',    value: 'Active',                           icon: '✅' },

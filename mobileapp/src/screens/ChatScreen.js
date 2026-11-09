@@ -33,7 +33,7 @@ const SUGGESTIONS = [
   '📦 Show all stock',
   '⚠️ Low stock items',
   '📊 Daily summary',
-  '➕ Create project',
+  '⏰ Expiring soon',
 ];
 
 let _id = 0;
@@ -177,7 +177,7 @@ export default function ChatScreen() {
   const welcome = {
     id:      uid(),
     role:    'assistant',
-    content: `Hi ${user?.username || 'there'}! 👋 I'm your SDJ Marine Stock Assistant.\n\nI remember our previous conversations! Try Voice Mode (🎙) for hands-free chat — just speak and I'll reply out loud.\n\n• "How much rice do we have?"\n• "Add 100 kg of cooking oil"\n• "Show me low stock items"\n• "Give me the daily summary"`,
+    content: `Hi ${user?.username || 'there'}! 👋 I'm your SDJ Marine Stock Assistant.\n\nI remember our previous conversations! Try Voice Mode (🎙) for hands-free chat — just speak and I'll reply out loud.\n\n• "How much rice do we have?"\n• "Which items expire in the next 30 days?"\n• "Show me low stock items"\n• "Give me the daily summary"`,
     ts:      new Date(),
   };
 

@@ -14,7 +14,18 @@ const Sidebar = ({ collapsed, onToggle, mobileVisible, onMobileClose }) => {
   const location              = useLocation();
   const { user, logout }      = useAuth();
 
-  const navItems = [
+  const isProjectUser = user?.role === 'User' && !user?.isDemo;
+
+  const navItems = isProjectUser ? [
+    {
+      section: 'Main',
+      links: [{ to: '/my-projects', icon: <MdWarehouse />, label: 'My Projects', badge: null }],
+    },
+    {
+      section: 'System',
+      links: [{ to: '/settings', icon: <MdSettings />, label: 'Settings', badge: null }],
+    },
+  ] : [
     {
       section: 'Main',
       links: [

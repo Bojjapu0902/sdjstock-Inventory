@@ -3,11 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { MdSave, MdPerson, MdSecurity, MdAccessTime, MdCheckCircle, MdError, MdWarning } from 'react-icons/md';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
-import { changePassword } from '../services/loginDb';
+import { sendChangePasswordOtp, confirmChangePassword } from '../services/loginDb';
 
 const STORAGE_KEY = 'sdjstock_idle_timeout';
 const TIMEOUT_OPTIONS = [5, 10, 15, 30, 60];
-const EMPTY_PASSWORDS = { current: '', next: '', confirm: '' };
+const EMPTY_PASSWORDS = { otp: '', next: '', confirm: '' };
 
 function readIdleSettings() {
   try {
@@ -52,6 +52,8 @@ const Settings = () => {
   const [passwords, setPasswords]           = useState(EMPTY_PASSWORDS);
   const [passwordNotice, setPasswordNotice] = useState(null);
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [otpSentTo, setOtpSentTo]           = useState('');
+  const [otpSending, setOtpSending]         = useState(false);
 
   const [idle, setIdle]             = useState(readIdleSettings);
   const [idleNotice, setIdleNotice] = useState(null);
@@ -82,18 +84,32 @@ const Settings = () => {
     }
   };
 
+  const handleSendOtp = async () => {
+    setPasswordNotice(null);
+    setOtpSending(true);
+    try {
+      const { email } = await sendChangePasswordOtp();
+      setOtpSentTo(email);
+      setPasswordNotice({ type: 'success', text: `Code sent to ${email}. It expires in 15 minutes.` });
+    } catch (err) {
+      setPasswordNotice({ type: 'error', text: err.message || 'Could not send the code.' });
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
   const handleChangePassword = async (e) => {
     e.preventDefault();
     setPasswordNotice(null);
     const fail = (text) => setPasswordNotice({ type: 'error', text });
-    if (!passwords.current)                     return fail('Enter your current password.');
+    if (!passwords.otp.trim())                  return fail('Enter the code from your email.');
     if (passwords.next.trim().length < 6)       return fail('New password must be at least 6 characters.');
     if (passwords.next !== passwords.confirm)   return fail('New passwords do not match.');
-    if (passwords.next === passwords.current)   return fail('New password must differ from the current one.');
     setPasswordSaving(true);
     try {
-      await changePassword(passwords.current, passwords.next);
+      await confirmChangePassword(passwords.otp, passwords.next);
       setPasswords(EMPTY_PASSWORDS);
+      setOtpSentTo('');
       setPasswordNotice({ type: 'success', text: 'Password updated. Use the new password next time you sign in.' });
     } catch (err) {
       fail(err.message || 'Could not update password.');
@@ -142,7 +158,8 @@ const Settings = () => {
               </div>
               <div>
                 <label className="fsp-label" htmlFor="settings-email">Email</label>
-                <input id="settings-email" className="fsp-input" type="email" value={account.email} onChange={changeAccount('email')} placeholder="your@email.com" autoComplete="email" />
+                {/* Password codes go to this address, so once set only an admin can change it. */}
+                <input id="settings-email" className="fsp-input" type="email" value={account.email} onChange={changeAccount('email')} placeholder="your@email.com" autoComplete="email" disabled={user?.role !== 'Admin' && Boolean(user?.email) && !user?.isDemo} />
               </div>
               <div>
                 <label className="fsp-label" htmlFor="settings-phone">Phone</label>
@@ -168,12 +185,26 @@ const Settings = () => {
         <SettingsSection icon={<MdSecurity />} title="Change Password">
           {user?.isDemo ? (
             <div className="settings-notice info">The demo account's password can't be changed.</div>
+          ) : !user?.email ? (
+            <div className="settings-notice warning">
+              <MdWarning /> Add an email address above first. Your password change is confirmed with a code sent there.
+            </div>
+          ) : !otpSentTo ? (
+            <>
+              <div className="settings-field-desc">We'll email a one-time code to {user.email} to confirm it's you.</div>
+              <Notice notice={passwordNotice} />
+              <div className="settings-actions">
+                <button type="button" className="btn-primary-fsp" onClick={handleSendOtp} disabled={otpSending}>
+                  <MdSecurity /> {otpSending ? 'Sending…' : 'Email Me a Code'}
+                </button>
+              </div>
+            </>
           ) : (
             <form onSubmit={handleChangePassword} noValidate>
               <div className="settings-stack">
                 <div>
-                  <label className="fsp-label" htmlFor="settings-current-password">Current Password</label>
-                  <input id="settings-current-password" className="fsp-input" type="password" value={passwords.current} onChange={changePasswordField('current')} autoComplete="current-password" />
+                  <label className="fsp-label" htmlFor="settings-otp">Code from Email</label>
+                  <input id="settings-otp" className="fsp-input" inputMode="numeric" maxLength={6} value={passwords.otp} onChange={changePasswordField('otp')} placeholder="6-digit code" autoComplete="one-time-code" />
                 </div>
                 <div>
                   <label className="fsp-label" htmlFor="settings-new-password">New Password</label>
@@ -188,6 +219,9 @@ const Settings = () => {
               <Notice notice={passwordNotice} />
 
               <div className="settings-actions">
+                <button type="button" className="btn-secondary-fsp" onClick={handleSendOtp} disabled={otpSending || passwordSaving}>
+                  {otpSending ? 'Sending…' : 'Resend Code'}
+                </button>
                 <button type="submit" className="btn-primary-fsp" disabled={passwordSaving}>
                   <MdSecurity /> {passwordSaving ? 'Updating…' : 'Update Password'}
                 </button>

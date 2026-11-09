@@ -356,6 +356,10 @@
   font-size: 14px;
 }
 
+.inv-state-title { font-weight: 600; color: var(--text-primary); }
+.inv-state-sub { font-size: 13px; color: var(--text-secondary); }
+.inv-state-action { margin-top: 8px; text-decoration: none; }
+
 .inv-spinner {
   width: 32px;
   height: 32px;

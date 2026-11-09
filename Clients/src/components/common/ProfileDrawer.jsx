@@ -2,11 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   MdClose, MdCameraAlt, MdDeleteForever, MdEdit, MdSave,
   MdPerson, MdEmail, MdPhone, MdShield, MdBadge,
-  MdCalendarToday, MdLock, MdVisibility, MdVisibilityOff,
+  MdCalendarToday, MdLock,
   MdCheckCircle, MdError, MdAdminPanelSettings,
 } from 'react-icons/md';
+import { Link } from 'react-router-dom';
 import api from '../../services/api';
-import { changePassword } from '../../services/loginDb';
 
 /* ── helpers ─────────────────────────────────────── */
 function compressAvatar(file) {
@@ -29,23 +29,6 @@ function compressAvatar(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-}
-
-function pwStrength(pw) {
-  if (!pw) return { score: 0, label: '', color: '' };
-  const score =
-    (pw.length >= 6           ? 1 : 0) +
-    (/[A-Z]/.test(pw)         ? 1 : 0) +
-    (/\d/.test(pw)            ? 1 : 0) +
-    (/[^a-zA-Z0-9]/.test(pw) ? 1 : 0);
-  const map = [
-    null,
-    { label:'Weak',   color:'#EF4444' },
-    { label:'Fair',   color:'#F59E0B' },
-    { label:'Good',   color:'#3B82F6' },
-    { label:'Strong', color:'#10B981' },
-  ];
-  return { score, ...map[score] };
 }
 
 /* ── Toast ───────────────────────────────────────── */
@@ -73,14 +56,6 @@ const Toast = ({ msg, type, onDone }) => {
   );
 };
 
-/* ── EyeBtn ──────────────────────────────────────── */
-const EyeBtn = ({ show, onToggle }) => (
-  <button type="button" onClick={onToggle}
-    style={{ position:'absolute', right:11, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#94A3B8', fontSize:18, display:'flex', alignItems:'center', padding:3 }}>
-    {show ? <MdVisibilityOff /> : <MdVisibility />}
-  </button>
-);
-
 /* ════════════════════════════════════════════════════
    PROFILE DRAWER
    ════════════════════════════════════════════════════ */
@@ -94,11 +69,6 @@ const ProfileDrawer = ({ user, onClose, onUpdate }) => {
   const [info, setInfo]         = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '' });
   const [editInfo, setEditInfo] = useState(false);
   const [infoLoading, setInfoLoading] = useState(false);
-
-  /* ── password ── */
-  const [pw, setPw]         = useState({ current:'', newPw:'', confirm:'' });
-  const [showPw, setShowPw] = useState({ current:false, newPw:false, confirm:false });
-  const [pwLoading, setPwLoading] = useState(false);
 
   /* ── toast ── */
   const [toast, setToast] = useState(null);
@@ -165,26 +135,6 @@ const ProfileDrawer = ({ user, onClose, onUpdate }) => {
     }
   };
 
-  /* ── Password ── */
-  const handleChangePw = async (e) => {
-    e.preventDefault();
-    if (!pw.current)             { showToast('Enter your current password.', 'error'); return; }
-    if (pw.newPw.length < 6)     { showToast('New password must be at least 6 characters.', 'error'); return; }
-    if (pw.newPw !== pw.confirm) { showToast('New passwords do not match.', 'error'); return; }
-    if (pw.current === pw.newPw) { showToast('New password must differ from current.', 'error'); return; }
-    setPwLoading(true);
-    try {
-      await changePassword(pw.current, pw.newPw);
-      setPw({ current:'', newPw:'', confirm:'' });
-      showToast('Password changed successfully.');
-    } catch (err) {
-      showToast(err.message || 'Failed to change password.', 'error');
-    } finally {
-      setPwLoading(false);
-    }
-  };
-
-  const strength   = pwStrength(pw.newPw);
   const initials   = (user?.name || user?.username || 'U').slice(0, 2).toUpperCase();
   const isAdmin    = user?.role === 'Admin';
 
@@ -329,7 +279,7 @@ const ProfileDrawer = ({ user, onClose, onUpdate }) => {
                   </div>
                   <div>
                     {label('Email Address')}
-                    <input {...inp()} type="email" value={info.email} onChange={(e) => setInfo((s) => ({ ...s, email: e.target.value }))} placeholder="your@email.com" />
+                    <input {...inp()} type="email" value={info.email} onChange={(e) => setInfo((s) => ({ ...s, email: e.target.value }))} placeholder="your@email.com" disabled={!isAdmin && Boolean(user?.email)} />
                   </div>
                   <div>
                     {label('Phone Number')}
@@ -372,81 +322,15 @@ const ProfileDrawer = ({ user, onClose, onUpdate }) => {
             )}
           </div>
 
-          {/* ── Change Password ── */}
+          {/* ── Change Password: confirmed by email code, in Settings ── */}
           {section('Change Password', <MdLock />)}
           <div style={{ padding:'12px 20px 24px' }}>
-            <form onSubmit={handleChangePw} noValidate>
-              <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-
-                <div>
-                  {label('Current Password')}
-                  <div style={{ position:'relative' }}>
-                    <input {...inp({ paddingRight:42 })} type={showPw.current ? 'text' : 'password'} value={pw.current}
-                      onChange={(e) => setPw((s) => ({ ...s, current: e.target.value }))} placeholder="Enter current password" />
-                    <EyeBtn show={showPw.current} onToggle={() => setShowPw((s) => ({ ...s, current:!s.current }))} />
-                  </div>
-                </div>
-
-                <div>
-                  {label('New Password')}
-                  <div style={{ position:'relative' }}>
-                    <input {...inp({ paddingRight:42 })} type={showPw.newPw ? 'text' : 'password'} value={pw.newPw}
-                      onChange={(e) => setPw((s) => ({ ...s, newPw: e.target.value }))} placeholder="Create new password" />
-                    <EyeBtn show={showPw.newPw} onToggle={() => setShowPw((s) => ({ ...s, newPw:!s.newPw }))} />
-                  </div>
-                  {pw.newPw && (
-                    <div style={{ marginTop:6 }}>
-                      <div style={{ display:'flex', gap:4, marginBottom:4 }}>
-                        {[1,2,3,4].map((n) => (
-                          <div key={n} style={{ flex:1, height:4, borderRadius:4, background: n <= strength.score ? strength.color : '#E2E8F0', transition:'background 0.25s' }} />
-                        ))}
-                      </div>
-                      <div style={{ fontSize:11, fontWeight:700, color: strength.color }}>{strength.label}</div>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  {label('Confirm New Password')}
-                  <div style={{ position:'relative' }}>
-                    <input {...inp({ paddingRight:42, borderColor: pw.confirm && pw.confirm !== pw.newPw ? '#EF4444' : undefined })}
-                      type={showPw.confirm ? 'text' : 'password'} value={pw.confirm}
-                      onChange={(e) => setPw((s) => ({ ...s, confirm: e.target.value }))} placeholder="Repeat new password" />
-                    <EyeBtn show={showPw.confirm} onToggle={() => setShowPw((s) => ({ ...s, confirm:!s.confirm }))} />
-                    {pw.confirm && pw.confirm === pw.newPw && (
-                      <MdCheckCircle style={{ position:'absolute', right:40, top:'50%', transform:'translateY(-50%)', color:'#10B981', fontSize:17 }} />
-                    )}
-                  </div>
-                  {pw.confirm && pw.confirm !== pw.newPw && (
-                    <div style={{ fontSize:11.5, color:'#EF4444', marginTop:4, fontWeight:500 }}>Passwords do not match</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Rules */}
-              <div style={{ margin:'14px 0 16px', padding:'12px 14px', background:'#EEF2FF', borderRadius:8, border:'1px solid rgba(79,70,229,0.15)' }}>
-                <div style={{ fontSize:11.5, fontWeight:700, color:'#4F46E5', marginBottom:8 }}>Password Requirements</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-                  {[
-                    { rule:'At least 6 characters',     met: pw.newPw.length >= 6 },
-                    { rule:'One uppercase letter (A–Z)', met: /[A-Z]/.test(pw.newPw) },
-                    { rule:'One number (0–9)',           met: /\d/.test(pw.newPw) },
-                    { rule:'One special character',      met: /[^a-zA-Z0-9]/.test(pw.newPw) },
-                  ].map(({ rule, met }) => (
-                    <div key={rule} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, color: met ? '#10B981' : '#94A3B8', fontWeight:500 }}>
-                      <span style={{ fontSize:13 }}>{met ? '✓' : '○'}</span>{rule}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <button type="submit" disabled={pwLoading}
-                style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 20px', background: pwLoading ? '#94A3B8' : '#4F46E5', border:'none', borderRadius:8, color:'#fff', fontSize:13, fontWeight:700, cursor: pwLoading ? 'not-allowed' : 'pointer' }}>
-                {pwLoading
-                  ? <><span style={{ display:'inline-block', width:14, height:14, border:'2px solid rgba(255,255,255,0.3)', borderTopColor:'#fff', borderRadius:'50%', animation:'pd-spin 0.7s linear infinite', marginRight:4 }} />Updating…</>
-                  : <><MdLock style={{ fontSize:16 }} />Update Password</>}
-              </button>
-            </form>
+            <div style={{ fontSize:13, color:'#64748B', marginBottom:12 }}>
+              Password changes are confirmed with a code sent to your email.
+            </div>
+            <Link to="/settings" style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'9px 20px', background:'#4F46E5', borderRadius:8, color:'#fff', fontSize:13, fontWeight:700, textDecoration:'none' }}>
+              <MdLock style={{ fontSize:16 }} /> Go to Settings
+            </Link>
           </div>
 
         </div>{/* end scrollable */}

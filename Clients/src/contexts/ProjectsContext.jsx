@@ -9,7 +9,7 @@ import {
   clearProjectStockReturned,
 } from '../services/projectsDb';
 import {
-  getUsers, deleteProjectUser, createUser, deleteUser,
+  getUsers, createUser, deleteUser,
 } from '../services/loginDb';
 
 const ProjectsContext = createContext(null);
@@ -56,12 +56,10 @@ export function ProjectsProvider({ children }) {
 
   const deleteProjectFn = useCallback(async (id) => {
     await deleteProject([], id);
-    await deleteProjectUser([], id);
     // stockReceived is embedded — deleting the project removes it automatically.
     const su = await clearProjectStockUsed({}, id);
     const srt = await clearProjectStockReturned({}, id);
     setProjects((prev) => prev.filter((p) => p.id !== id));
-    setUsers((prev)    => prev.filter((u) => u.projectId !== id));
     setStockReceived((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setStockUsed(su);
     setStockReturned(srt);
@@ -154,11 +152,16 @@ export function ProjectsProvider({ children }) {
     setStockReturned(result);
   }, []);
 
-  /* ── Expose users refresh ─────────────────────── */
+  /* ── Expose refreshes ─────────────────────────── */
 
   const refreshUsers = useCallback(async () => {
     const u = await getUsers();
     setUsers(u);
+  }, []);
+
+  const refreshProjects = useCallback(async () => {
+    const p = await getProjects();
+    setProjects(p);
   }, []);
 
   const value = {
@@ -184,6 +187,7 @@ export function ProjectsProvider({ children }) {
     createUser:          createUserFn,
     deleteUser:          deleteUserFn,
     refreshUsers,
+    refreshProjects,
   };
 
   return (

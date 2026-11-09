@@ -4,12 +4,12 @@ import {
   MdPerson, MdEdit, MdSave, MdClose,
   MdEmail, MdPhone, MdBadge, MdShield,
   MdCalendarToday, MdAdminPanelSettings,
-  MdVisibility, MdVisibilityOff, MdLock,
+  MdLock,
   MdCheckCircle, MdError, MdCameraAlt, MdDeleteForever,
 } from 'react-icons/md';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
-import { changePassword } from '../services/loginDb';
+import { Link } from 'react-router-dom';
 
 /* ── Toast ─────────────────────────────────────────────── */
 const Toast = ({ msg, type, onDone }) => {
@@ -51,24 +51,6 @@ function compressAvatar(file) {
   });
 }
 
-/* ── Password strength helper ────────────────────────────── */
-function pwStrength(pw) {
-  if (!pw) return { score: 0, label: '', color: '' };
-  const score =
-    (pw.length >= 6        ? 1 : 0) +
-    (/[A-Z]/.test(pw)      ? 1 : 0) +
-    (/\d/.test(pw)         ? 1 : 0) +
-    (/[^a-zA-Z0-9]/.test(pw) ? 1 : 0);
-  const map = [
-    null,
-    { label: 'Weak',   color: '#EF4444' },
-    { label: 'Fair',   color: '#F59E0B' },
-    { label: 'Good',   color: '#3B82F6' },
-    { label: 'Strong', color: '#10B981' },
-  ];
-  return { score, ...map[score] };
-}
-
 /* ════════════════════════════════════════════════════════
    PROFILE PAGE
    ════════════════════════════════════════════════════════ */
@@ -83,11 +65,6 @@ const Profile = () => {
   const [info, setInfo]       = useState({ name: '', email: '', phone: '' });
   const [editInfo, setEditInfo] = useState(false);
   const [infoLoading, setInfoLoading] = useState(false);
-
-  /* ── Password state ── */
-  const [pw, setPw] = useState({ current: '', newPw: '', confirm: '' });
-  const [showPw, setShowPw] = useState({ current: false, newPw: false, confirm: false });
-  const [pwLoading, setPwLoading] = useState(false);
 
   /* ── Toast ── */
   const [toast, setToast] = useState(null);
@@ -127,25 +104,6 @@ const Profile = () => {
     }
   };
 
-  /* ── Change password ── */
-  const handleChangePw = async (e) => {
-    e.preventDefault();
-    if (!pw.current)                  { showToast('Enter your current password.', 'error'); return; }
-    if (pw.newPw.length < 6)          { showToast('New password must be at least 6 characters.', 'error'); return; }
-    if (pw.newPw !== pw.confirm)      { showToast('New passwords do not match.', 'error'); return; }
-    if (pw.current === pw.newPw)      { showToast('New password must differ from the current one.', 'error'); return; }
-    setPwLoading(true);
-    try {
-      await changePassword(pw.current, pw.newPw);
-      setPw({ current: '', newPw: '', confirm: '' });
-      showToast('Password changed successfully.');
-    } catch (err) {
-      showToast(err.message || 'Failed to change password.', 'error');
-    } finally {
-      setPwLoading(false);
-    }
-  };
-
   /* ── Avatar upload ── */
   const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
@@ -179,7 +137,6 @@ const Profile = () => {
     }
   };
 
-  const strength = pwStrength(pw.newPw);
   const initials = (user?.name || user?.username || 'AU').slice(0, 2).toUpperCase();
   const isAdmin  = user?.role === 'Admin';
 
@@ -335,6 +292,7 @@ const Profile = () => {
                     <input
                       className="fsp-input"
                       type="email"
+                      disabled={!isAdmin && Boolean(user?.email) && !user?.isDemo}
                       value={info.email}
                       onChange={(e) => setInfo(s => ({ ...s, email: e.target.value }))}
                       placeholder="your@email.com"
@@ -419,142 +377,21 @@ const Profile = () => {
           </div>
         </div>
 
-        {/* ── Change Password ── */}
+        {/* ── Change Password: confirmed by email code, in Settings ── */}
         <div className="fsp-card profile-grid-full">
           <div className="fsp-card-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <MdLock style={{ fontSize: 20, color: 'var(--primary)' }} />
               <div>
                 <div className="fsp-card-title">Change Password</div>
-                <div className="fsp-card-subtitle">Use a strong password with letters, numbers and symbols</div>
+                <div className="fsp-card-subtitle">Password changes are confirmed with a code sent to your email</div>
               </div>
             </div>
           </div>
           <div className="fsp-card-body">
-            <form onSubmit={handleChangePw} noValidate>
-              <div className="profile-form-row">
-
-                {/* Current password */}
-                <div className="profile-field">
-                  <label className="fsp-label">Current Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      className="fsp-input"
-                      type={showPw.current ? 'text' : 'password'}
-                      value={pw.current}
-                      onChange={(e) => setPw(s => ({ ...s, current: e.target.value }))}
-                      placeholder="Enter current password"
-                      style={{ paddingRight: 42 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw(s => ({ ...s, current: !s.current }))}
-                      style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 18, display: 'flex', alignItems: 'center', padding: 3 }}
-                    >
-                      {showPw.current ? <MdVisibilityOff /> : <MdVisibility />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Spacer on desktop */}
-                <div />
-
-                {/* New password */}
-                <div className="profile-field">
-                  <label className="fsp-label">New Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      className="fsp-input"
-                      type={showPw.newPw ? 'text' : 'password'}
-                      value={pw.newPw}
-                      onChange={(e) => setPw(s => ({ ...s, newPw: e.target.value }))}
-                      placeholder="Create new password"
-                      style={{ paddingRight: 42 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw(s => ({ ...s, newPw: !s.newPw }))}
-                      style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 18, display: 'flex', alignItems: 'center', padding: 3 }}
-                    >
-                      {showPw.newPw ? <MdVisibilityOff /> : <MdVisibility />}
-                    </button>
-                  </div>
-                  {/* strength bar */}
-                  {pw.newPw && (
-                    <div className="profile-pw-strength">
-                      <div className="profile-pw-bars">
-                        {[1,2,3,4].map(n => (
-                          <div key={n} className="profile-pw-bar"
-                            style={{ background: n <= strength.score ? strength.color : 'var(--border-color)' }} />
-                        ))}
-                      </div>
-                      <div className="profile-pw-label" style={{ color: strength.color }}>{strength.label}</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Confirm password */}
-                <div className="profile-field">
-                  <label className="fsp-label">Confirm New Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      className="fsp-input"
-                      type={showPw.confirm ? 'text' : 'password'}
-                      value={pw.confirm}
-                      onChange={(e) => setPw(s => ({ ...s, confirm: e.target.value }))}
-                      placeholder="Repeat new password"
-                      style={{
-                        paddingRight: 42,
-                        borderColor: pw.confirm && pw.confirm !== pw.newPw ? 'var(--danger)' : undefined,
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw(s => ({ ...s, confirm: !s.confirm }))}
-                      style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 18, display: 'flex', alignItems: 'center', padding: 3 }}
-                    >
-                      {showPw.confirm ? <MdVisibilityOff /> : <MdVisibility />}
-                    </button>
-                    {pw.confirm && pw.confirm === pw.newPw && (
-                      <MdCheckCircle style={{ position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)', color: 'var(--success)', fontSize: 17 }} />
-                    )}
-                  </div>
-                  {pw.confirm && pw.confirm !== pw.newPw && (
-                    <div style={{ fontSize: 11.5, color: 'var(--danger)', marginTop: 4, fontWeight: 500 }}>Passwords do not match</div>
-                  )}
-                </div>
-
-              </div>
-
-              {/* Password rules */}
-              <div style={{ marginTop: 16, marginBottom: 20, padding: '12px 16px', background: 'var(--primary-pale)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(79,70,229,0.12)' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>Password Requirements</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 24px' }}>
-                  {[
-                    { rule: 'At least 6 characters',      met: pw.newPw.length >= 6 },
-                    { rule: 'One uppercase letter (A–Z)',  met: /[A-Z]/.test(pw.newPw) },
-                    { rule: 'One number (0–9)',            met: /\d/.test(pw.newPw) },
-                    { rule: 'One special character',       met: /[^a-zA-Z0-9]/.test(pw.newPw) },
-                  ].map(({ rule, met }) => (
-                    <div key={rule} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: met ? 'var(--success)' : 'var(--text-muted)', fontWeight: 500 }}>
-                      <span style={{ fontSize: 14 }}>{met ? '✓' : '○'}</span>
-                      {rule}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="btn-primary-fsp"
-                disabled={pwLoading}
-                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                {pwLoading
-                  ? 'Updating Password…'
-                  : <><MdLock style={{ fontSize: 16 }} />Update Password</>}
-              </button>
-            </form>
+            <Link to="/settings" className="btn-primary-fsp" style={{ textDecoration: 'none' }}>
+              <MdLock style={{ fontSize: 16 }} /> Go to Settings
+            </Link>
           </div>
         </div>
 

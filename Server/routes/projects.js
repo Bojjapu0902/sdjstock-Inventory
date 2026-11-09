@@ -1,7 +1,9 @@
 const router  = require('express').Router();
 const auth    = require('../middleware/auth');
+const { requireAdmin, requireProjectAccess } = require('../middleware/access');
 const Project = require('../models/Project');
 const Item    = require('../models/InventoryItem');
+const User    = require('../models/User');
 
 function recomputeStock(records) {
   return (records || []).reduce((total, r) => {
@@ -14,22 +16,47 @@ const LOCKED_MSG = 'This submission has already been approved by the project man
 
 // ── Project CRUD ─────────────────────────────────────────────────────────────
 
+// Admins see every project; a user only sees the projects assigned to them.
 router.get('/', auth, async (req, res) => {
-  try { res.json(await Project.find({}).lean()); }
+  try {
+    const filter = req.user.role === 'Admin' ? {} : { assignedUserId: req.user.userId };
+    res.json(await Project.find(filter).lean());
+  }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, requireAdmin, async (req, res) => {
   try {
-    const { stockReceived, ...rest } = req.body;
+    const { stockReceived, assignedUserId, ...rest } = req.body;
     const doc = await Project.create({ ...rest, stockReceived: [] });
     res.status(201).json(doc.toObject());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.put('/:id', auth, async (req, res) => {
+// PUT /api/projects/:id/assignment  { userId | null }
+// The only route that can move a project from one user to another.
+router.put('/:id/assignment', auth, requireAdmin, async (req, res) => {
   try {
-    const { _id, __v, stockReceived, ...update } = req.body;
+    const userId = req.body.userId || null;
+    if (userId) {
+      const target = await User.findOne({ id: userId }).select('role isActive').lean();
+      if (!target) return res.status(404).json({ error: 'User not found' });
+      if (target.role !== 'User') return res.status(400).json({ error: 'Admins can access every project, so projects are only assigned to users.' });
+      if (target.isActive === false) return res.status(400).json({ error: 'That user is deactivated. Activate the account first.' });
+    }
+    const doc = await Project.findOneAndUpdate(
+      { id: req.params.id },
+      { $set: { assignedUserId: userId } },
+      { new: true }
+    ).lean();
+    if (!doc) return res.status(404).json({ error: 'Project not found' });
+    res.json(doc);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/:id', auth, requireAdmin, async (req, res) => {
+  try {
+    const { _id, __v, stockReceived, assignedUserId, ...update } = req.body;
     const doc = await Project.findOneAndUpdate(
       { id: req.params.id },
       { $set: update },
@@ -40,7 +67,7 @@ router.put('/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, requireAdmin, async (req, res) => {
   try {
     await Project.findOneAndDelete({ id: req.params.id });
     res.json({ success: true });
@@ -51,7 +78,7 @@ router.delete('/:id', auth, async (req, res) => {
 // Submissions are embedded inside the project document.
 
 // POST /api/projects/:id/stock-received  — push a new submission
-router.post('/:id/stock-received', auth, async (req, res) => {
+router.post('/:id/stock-received', auth, requireProjectAccess, async (req, res) => {
   try {
     const { adminName = '', date = '', time = '', items = [] } = req.body;
 
@@ -100,7 +127,7 @@ router.post('/:id/stock-received', auth, async (req, res) => {
 
 // PUT /api/projects/:id/stock-received/:subId  — replace a submission
 // Only allowed while the submission is still pending manager approval.
-router.put('/:id/stock-received/:subId', auth, async (req, res) => {
+router.put('/:id/stock-received/:subId', auth, requireProjectAccess, async (req, res) => {
   try {
     const { _id, __v, projectId, approvalStatus, approvedAt, approvedBy, ...update } = req.body;
     const replacement = { ...update, id: update.id || req.params.subId, approvalStatus: 'pending' };
@@ -124,7 +151,7 @@ router.put('/:id/stock-received/:subId', auth, async (req, res) => {
 
 // DELETE /api/projects/:id/stock-received/:subId  — remove a submission
 // Only allowed while the submission is still pending manager approval.
-router.delete('/:id/stock-received/:subId', auth, async (req, res) => {
+router.delete('/:id/stock-received/:subId', auth, requireProjectAccess, async (req, res) => {
   try {
     const doc = await Project.findOneAndUpdate(
       { id: req.params.id },
@@ -141,7 +168,7 @@ router.delete('/:id/stock-received/:subId', auth, async (req, res) => {
 });
 
 // POST /api/projects/:id/stock-received/:subId/approve
-router.post('/:id/stock-received/:subId/approve', auth, async (req, res) => {
+router.post('/:id/stock-received/:subId/approve', auth, requireProjectAccess, async (req, res) => {
   try {
     const { approvalItems, approvedBy } = req.body;
     const project = await Project.findOne({ id: req.params.id });

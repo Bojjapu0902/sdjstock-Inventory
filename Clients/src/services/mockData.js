@@ -258,12 +258,12 @@ export const wastageByCategory = [
 ];
 
 // ── Utilities ────────────────────────────────────────
-const LOW_STOCK_THRESHOLD = 20;
 
-export const getStockStatus = (current) => {
-  if (current === 0)                    return { label: 'Out of Stock', type: 'danger'  };
-  if (current < LOW_STOCK_THRESHOLD)    return { label: 'Low Stock',    type: 'warning' };
-  return                                       { label: 'In Stock',     type: 'success' };
+// Low means at or below the item's own minimum, the same rule the AI assistant uses.
+export const getStockStatus = (current, minStock = 0) => {
+  if (current === 0)        return { label: 'Out of Stock', type: 'danger'  };
+  if (current <= minStock)  return { label: 'Low Stock',    type: 'warning' };
+  return                           { label: 'In Stock',     type: 'success' };
 };
 
 export const getStockPercent  = (current, max) => Math.min(Math.round((current / max) * 100), 100);
